@@ -1254,14 +1254,14 @@ async function setupNotificationChannel() {
     if (!LN) return;
     await LN.requestPermissions();
     await LN.createChannel({
-      id: 'carevault_alarm_v2',
+      id: 'carevault_alarm_v3',
       name: 'CareVault Loud Alarms',
-      description: 'Loud medicine alarm reminders',
+      description: 'Loud medicine alarm reminders even when app is closed',
       importance: 5,
       visibility: 1,
-      sound: 'alarm_ring',
+      sound: 'alarm_ring.wav',
       vibration: true,
-      sound: 'carevault_alarm.wav'
+      lights: true
     });
     await LN.registerActionTypes({
       types: [{
@@ -1403,7 +1403,7 @@ async function scheduleMedNotification(med) {
         id: (med.notifId || (med.notifId = getNotifId(med.id))),
         title: `💊 ${med.name} (${med.time})`,
         body: `${who} • ${med.note} • Time to take your medicine`,
-        channelId: 'carevault_alarm_v2',
+        channelId: 'carevault_alarm_v3',
         sound: 'alarm_ring',
         sound: 'alarm_ring.wav',
         schedule: { at: getNextExactDate(med.time), allowWhileIdle: true }
@@ -1877,8 +1877,8 @@ function snoozeAlarm5m() {
           id: Math.floor(Math.random() * 100000),
           title: `CareVault Snooze (${who})`,
           body: `Still pending: ${med.name} (${med.note})`,
-          channelId: 'carevault_alarm_v2',
-          sound: 'carevault_alarm.wav',
+          channelId: 'carevault_alarm_v3',
+          sound: 'alarm_ring.wav',
           actionTypeId: 'MED_REMINDER',
           extra: { medId: med.id },
           schedule: { at: new Date(Date.now() + 5 * 60 * 1000), allowWhileIdle: true }
