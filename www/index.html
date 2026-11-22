@@ -1138,6 +1138,13 @@ function toggleVoice(val) {
   showToast(val ? 'Alarm & Voice ON' : 'Alarm & Voice OFF');
 }
 
+function getNextExactDate(timeStr) {
+  const [hh, mm] = (timeStr || '08:00').split(':').map(Number);
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  return target;
+}
 async function scheduleMedNotification(med) {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
@@ -1156,7 +1163,7 @@ async function scheduleMedNotification(med) {
         body: `${who} • ${med.note} • Time to take your medicine`,
         channelId: 'carevault_alarm_ch',
         sound: 'alarm_ring.wav',
-        schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
+        schedule: { at: getNextExactDate(med.time), allowWhileIdle: true }
       }]
     });
   } catch (e) {}
