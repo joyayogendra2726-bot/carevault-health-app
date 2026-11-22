@@ -385,7 +385,8 @@
         <span style="font-size:13px">Speak Medicine Name &amp; Loud Alarm</span>
         <input type="checkbox" id="voiceToggle" checked onchange="toggleVoice(this.checked)" style="width:20px;height:20px;margin:0" />
       </div>
-      <button class="btn sec full" onclick="testAlarmAndVoice()">Test Loud Alarm &amp; Voice Now</button>
+      <button class="btn sec full" onclick="testAlarmAndVoice()" style="margin-bottom:8px">Test Loud Alarm &amp; Voice Now</button>
+      <button class="btn sec sm full" onclick="ensureExactAlarmPermission()">Allow Exact Alarm Permission (Android 14/15)</button>
     </div>
 
     <div class="card">
@@ -837,7 +838,8 @@ function hasProAccess() {
 }
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function showToast(msg) {
@@ -952,7 +954,7 @@ function get24hFromPicker() {
 }
 
 function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
-  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   if (!hasProAccess() && profMeds.length >= FREE_MAX_MEDS) {
     showToast('Free tier limit: 3 medicines. Upgrade to Pro!');
     switchTab('settings');
@@ -1001,11 +1003,31 @@ async function saveMedicine() {
   showToast('Medicine saved');
 }
 
+function getNotifId(medId) {
+  let h = 0;
+  for (let i = 0; i < String(medId).length; i++) {
+    h = ((h << 5) - h + String(medId).charCodeAt(i)) | 0;
+  }
+  return (Math.abs(h) % 100000000) + 1000;
+}
+
+async function ensureExactAlarmPermission() {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN || !LN.checkExactNotificationSetting) return;
+    const res = await LN.checkExactNotificationSetting();
+    if (res && res.exact_alarm !== 'granted' && LN.changeExactNotificationSetting) {
+      await LN.changeExactNotificationSetting();
+    }
+  } catch (e) {}
+}
+
 async function setupNotificationChannel() {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
     await LN.requestPermissions();
+    await ensureExactAlarmPermission();
     await LN.createChannel({
       id: 'carevault_alarm_ch',
       name: 'Medicine Alarms',
@@ -1115,12 +1137,15 @@ async function scheduleMedNotification(med) {
     await LN.requestPermissions();
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
+    const nid = med.notifId || (med.notifId = getNotifId(med.id));
+    saveDB();
+    try { await LN.cancel({ notifications: [{ id: nid }] }); } catch (e) {}
     const [hh, mm] = med.time.split(':').map(Number);
     await LN.schedule({
       notifications: [{
-        id: Math.floor(Math.random() * 100000),
-        title: `CareVault Alarm (${who})`,
-        body: `Time for ${who}: ${med.name}, ${med.note}`,
+        id: (med.notifId || (med.notifId = getNotifId(med.id))),
+        title: `💊 ${med.name} (${med.time})`,
+        body: `${who} • ${med.note} • Time to take your medicine`,
         channelId: 'carevault_alarm_ch',
         sound: 'alarm_ring.wav',
         schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
@@ -1135,13 +1160,22 @@ function logDose(medId, status) {
   const prev = db.logs[k][medId];
   db.logs[k][medId] = status;
   const med = db.meds.find(m => m.id === medId);
-  if (med && status === 'taken' && prev !== 'taken' && med.stock > 0) {
-    med.stock -= 1;
+  if (med) {
+    med.stock = parseInt(med.stock, 10) || 0;
+    if (status === 'taken' && prev !== 'taken' && med.stock > 0) {
+      med.stock -= 1;
+    } else if (status === 'skipped' && prev === 'taken') {
+      med.stock += 1;
+    }
   }
   if (_snoozeTimers[medId]) { clearTimeout(_snoozeTimers[medId]); delete _snoozeTimers[medId]; }
   saveDB();
   renderAll();
-  showToast(status === 'taken' ? 'Marked Taken' : 'Marked Skipped');
+  if (med && status === 'taken') {
+    showToast(prev === 'taken' ? `Already Taken (${med.stock} left)` : `Taken! ${med.stock} left`);
+  } else {
+    showToast('Marked Skipped');
+  }
 }
 
 let _refillMedId = null;
@@ -1167,14 +1201,21 @@ function addRefillCustom() {
   if (q <= 0) return showToast('Enter valid quantity');
   addRefillQty(q);
 }
-function deleteMed(medId) {
+async function deleteMed(medId) {
+  const med = db.meds.find(m => m.id === medId);
+  if (med) {
+    try {
+      const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+      if (LN) await LN.cancel({ notifications: [{ id: med.notifId || getNotifId(medId) }] });
+    } catch (e) {}
+  }
   db.meds = db.meds.filter(m => m.id !== medId);
   saveDB();
   renderAll();
 }
 
 function renderToday() {
-  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const k = todayKey();
   const dayLog = db.logs[k] || {};
   const takenCount = profMeds.filter(m => dayLog[m.id] === 'taken').length;
@@ -1196,7 +1237,7 @@ function renderToday() {
     return `<div class="med-item">
       <div class="med-info">
         <h4>${esc(m.name)}</h4>
-        <p>${m.slot} • ${m.time} • ${esc(m.note)}</p>
+        <p>${m.slot} • ${m.time} • ${esc(m.note)} • ${tr('lblStock')}: <b>${m.stock}</b></p>
         ${st === 'taken' ? `<span class="badge ok">${tr('lblTaken')}</span>` : st === 'skipped' ? `<span class="badge warn">${tr('lblSkipped')}</span>` : ''}
         ${lowStock ? `<span class="badge danger">${tr('lblRefillSoon').replace('{n}', m.stock)}</span>` : ''}
       </div>
@@ -1209,7 +1250,7 @@ function renderToday() {
 }
 
 function renderMeds() {
-  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   document.getElementById('medLimitText').textContent = hasProAccess() ? 'Unlimited (Pro)' : `${profMeds.length}/${FREE_MAX_MEDS} Free`;
   const list = document.getElementById('medsList');
   if (!profMeds.length) {
