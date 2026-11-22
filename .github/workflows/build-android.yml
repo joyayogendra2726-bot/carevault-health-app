@@ -27,12 +27,23 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify & auto-fix www folder structure
+        run: |
+          mkdir -p www/assets
+          [ -f "index.html" ] && [ ! -f "www/index.html" ] && mv index.html www/index.html
+          [ -f "manifest.json" ] && [ ! -f "www/manifest.json" ] && mv manifest.json www/manifest.json
+          [ -f "sw.js" ] && [ ! -f "www/sw.js" ] && mv sw.js www/sw.js
+          [ -f "icon-512.png" ] && [ ! -f "www/assets/icon-512.png" ] && mv icon-512.png www/assets/icon-512.png
+          [ -f "welcome-3d.png" ] && [ ! -f "www/assets/welcome-3d.png" ] && mv welcome-3d.png www/assets/welcome-3d.png
+          test -f www/index.html || (echo "ERROR: www/index.html is missing!" && exit 1)
+
       - name: Add and sync Capacitor Android
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
           fi
           npx cap sync android
+          test -f android/app/src/main/assets/public/index.html || (echo "ERROR: public/index.html missing after cap sync!" && exit 1)
 
       - name: Configure SDK versions (API 35 & minSdk 24)
         run: |
