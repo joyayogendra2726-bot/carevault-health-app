@@ -1,1 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#08141E" />
+  <title>CareVault: Family Meds & Vitals</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root {
+      --bg: #07131D;
+      --surface: #0E1F2E;
+      --surface-2: #152B3F;
+      --border: #23405A;
+      --text: #F1F5F9;
+      --muted: #94A3B8;
+      --accent: #14B8A6;
+      --accent-glow: rgba(20, 184, 166, 0.22);
+      --danger: #F43F5E;
+      --warn: #F59E0B;
+      --ok: #10B981;
+      --safe-top: env(safe-area-inset-top, 12px);
+      --safe-bottom: env(safe-area-inset-bottom, 12px);
+    }
+    body.theme-ivory {
+      --bg: #F8FAFC;
+      --surface: #FFFFFF;
+      --surface-2: #F1F5F9;
+      --border: #E2E8F0;
+      --text: #0F172A;
+      --muted: #64748B;
+      --accent: #0D9488;
+      --accent-glow: rgba(13, 148, 136, 0.14);
+    }
+    body.theme-slate {
+      --bg: #111827;
+      --surface: #1F2937;
+      --surface-2: #374151;
+      --border: #4B5563;
+      --text: #F9FAFB;
+      --muted: #9CA3AF;
+      --accent: #38BDF8;
+      --accent-glow: rgba(56, 189, 248, 0.18);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; overflow-x: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
 
+    /* 3D WELCOME SPLASH OVERLAY */
+    .welcome-splash {
+      position: fixed; inset: 0; z-index: 999;
+      background: radial-gradient(circle at top, #0F2E42 0%, #061019 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; text-align: center; transition: opacity 0.45s ease, transform 0.45s ease;
+    }
+    .welcome-splash.hide { opacity: 0; pointer-events: none; transform: scale(1.04); }
+    .welcome-img {
+      width: 100%; max-width: 310px; border-radius: 26px;
+      box-shadow: 0 22px 50px rgba(0,0,0,0.55), 0 0 32px rgba(20,184,166,0.22);
+      animation: float3d 3.4s ease-in-out infinite;
+    }
+    @keyframes float3d {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+    .welcome-title { font-size: 28px; font-weight: 800; color: #fff; margin: 20px 0 6px; letter-spacing: -0.4px; }
+    .welcome-sub { font-size: 13px; color: #94A3B8; max-width: 300px; line-height: 1.5; margin: 0 0 22px; }
+    .welcome-btn {
+      background: linear-gradient(135deg, #14B8A6, #0EA5E9); color: #042F2E;
+      border: none; border-radius: 14px; padding: 14px 30px; font-size: 15px; font-weight: 800;
+      cursor: pointer; box-shadow: 0 10px 26px rgba(20,184,166,0.35);
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      padding-top: calc(max(var(--safe-top), 24px) + 8px);
+      padding-bottom: calc(var(--safe-bottom) + 86px);
+      max-width: 540px; margin: 0 auto;
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 16px 12px; gap: 10px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-dot {
+      width: 36px; height: 36px; border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), #0284C7);
+      display: grid; place-items: center; font-weight: 800; color: #fff; font-size: 15px;
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+    .brand h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+    .brand small { display: block; font-size: 11px; color: var(--muted); }
+    .trial-pill {
+      font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
+      background: var(--accent-glow); color: var(--accent); border: 1px solid var(--accent);
+      cursor: pointer; white-space: nowrap;
+    }
+    .trial-pill.pro { background: rgba(16, 185, 129, 0.16); color: var(--ok); border-color: var(--ok); }
+    .trial-pill.free { background: rgba(245, 158, 11, 0.16); color: var(--warn); border-color: var(--warn); }
+
+    .profile-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 12px;
+      scrollbar-width: none;
+    }
+    .profile-strip::-webkit-scrollbar { display: none; }
+    .prof-chip {
+      padding: 7px 14px; border-radius: 999px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--muted); font-size: 13px;
+      font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    }
+    .prof-chip.active {
+      background: var(--accent); color: #042F2E; border-color: var(--accent); font-weight: 700;
+    }
+    .prof-chip.add { border-style: dashed; color: var(--accent); }
+
+    .page { display: none; padding: 0 16px; animation: fadeIn 0.2s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 18px; padding: 15px; margin-bottom: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .card-title { font-size: 14px; font-weight: 700; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+
+    .progress-wrap { display: flex; align-items: center; gap: 14px; }
+    .ring {
+      width: 66px; height: 66px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 800; font-size: 15px;
+      background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--surface-2) 0);
+      position: relative; flex-shrink: 0;
+      box-shadow: 0 0 18px var(--accent-glow);
+    }
+    .ring::after {
+      content: attr(data-label); width: 52px; height: 52px; border-radius: 50%;
+      background: var(--surface); display: grid; place-items: center; font-size: 13px;
+    }
+
+    .med-item {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px; margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .med-info h4 { margin: 0 0 3px; font-size: 15px; }
+    .med-info p { margin: 0; font-size: 12px; color: var(--muted); }
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 6px; margin-top: 4px;
+    }
+    .badge.ok { background: rgba(16,185,129,0.18); color: var(--ok); }
+    .badge.warn { background: rgba(245,158,11,0.18); color: var(--warn); }
+    .badge.danger { background: rgba(244,63,94,0.18); color: var(--danger); }
+
+    .btn {
+      border: none; border-radius: 11px; padding: 9px 13px; font-size: 13px;
+      font-weight: 700; cursor: pointer; background: var(--accent); color: #042F2E;
+    }
+    .btn.sec { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn.sm { padding: 7px 10px; font-size: 12px; }
+    .btn.danger { background: rgba(244,63,94,0.16); color: var(--danger); border: 1px solid var(--danger); }
+    .btn.full { width: 100%; padding: 12px; font-size: 14px; }
+
+    .preset-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+    .preset-btn {
+      text-align: start; padding: 10px; border-radius: 12px; background: var(--surface-2);
+      border: 1px solid var(--border); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .preset-btn span { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border-radius: 10px; margin-bottom: 10px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+      font-size: 14px; font-family: inherit;
+    }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      padding: 6px 4px calc(var(--safe-bottom) + 6px);
+      max-width: 540px; margin: 0 auto;
+    }
+    .nav-btn {
+      background: none; border: none; color: var(--muted); font-size: 11px;
+      font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      cursor: pointer; padding: 4px 2px;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-ico { font-size: 18px; line-height: 1; }
+
+    .ampm-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .ampm-btn {
+      padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--muted); font-weight: 800; font-size: 13px; cursor: pointer;
+    }
+    .ampm-btn.active-am { background: #F59E0B; color: #1E1B4B; border-color: #FBBF24; box-shadow: 0 0 12px rgba(245,158,11,0.35); }
+    .ampm-btn.active-pm { background: #6366F1; color: #FFFFFF; border-color: #818CF8; box-shadow: 0 0 12px rgba(99,102,241,0.35); }
+    .slot-warn {
+      display: none; background: rgba(244,63,94,0.16); border: 1px solid var(--danger);
+      color: #FDA4AF; padding: 9px 11px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-bottom: 10px;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.68); z-index: 100;
+      display: none; align-items: flex-end; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-sheet {
+      width: 100%; max-width: 540px; max-height: 88vh; overflow-y: auto;
+      background: var(--surface); border-radius: 20px 20px 0 0; padding: 18px 16px 28px;
+      border-top: 1px solid var(--border);
+    }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .toast {
+      position: fixed; top: calc(var(--safe-top) + 12px); left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #042F2E; padding: 9px 16px; border-radius: 999px;
+      font-weight: 700; font-size: 13px; z-index: 200; display: none; box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    }
+    @media print {
+      .topbar, .profile-strip, .bottom-nav, .no-print, .welcome-splash { display: none !important; }
+      body { background: #fff; color: #000; }
+      .card { border: 1px solid #ccc; background: #fff; color: #000; }
+    }
+  </style>
+</head>
+<body>
+<!-- 3D WELCOME SPLASH -->
+<div id="welcomeSplash" class="welcome-splash">
+  <img id="welcomeHeroImg" class="welcome-img" src="assets/welcome-3d.png" alt="CareVault 3D" />
+  <div class="welcome-title">CareVault</div>
+  <p class="welcome-sub" id="welcomeSub">100% Offline • Zero Ads • Family Medicine, Refill &amp; Vitals Vault</p>
+  <button class="welcome-btn" id="welcomeStartBtn" onclick="closeSplash()">Open My Health Vault</button>
+</div>
+
+<div id="toast" class="toast"></div>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-dot" src="assets/icon-512.png" alt="CareVault" style="object-fit:cover;padding:0;background:none;" />
+      <div>
+        <h1>CareVault</h1>
+        <small id="brandSub">100% Offline Family Health Vault</small>
+      </div>
+    </div>
+    <button id="planBadge" class="trial-pill" onclick="switchTab('settings')">14d Trial</button>
+  </header>
+
+  <div id="profileStrip" class="profile-strip"></div>
+
+  <!-- TAB 1: TODAY -->
+  <section id="tab-today" class="page active">
+    <div class="card">
+      <div class="progress-wrap">
+        <div id="adherenceRing" class="ring" style="--pct:0" data-label="0%"></div>
+        <div>
+          <div style="font-size:15px;font-weight:700" id="todayGreeting">Today's Medicine Plan</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px" id="todaySummary">0 of 0 doses taken today</div>
+        </div>
+      </div>
+    </div>
+    <div id="todayList"></div>
+  </section>
+
+  <!-- TAB 2: MEDS & STOCK -->
+  <section id="tab-meds" class="page">
+    <div class="card">
+      <div class="card-title">
+        <span id="lblQuickPresets">Quick Add Presets</span>
+        <button id="btnCustom" class="btn sm" onclick="openMedModal()">+ Custom</button>
+      </div>
+      <div class="preset-grid">
+        <button class="preset-btn" onclick="openMedModal('BP Tablet (Amlodipine)', 'Morning', '08:00', 30)">BP Tablet<span>Morning • 30 tabs</span></button>
+        <button class="preset-btn" onclick="openMedModal('Diabetes (Metformin)', 'Morning', '08:30', 30)">Sugar / Metformin<span>After Breakfast</span></button>
+        <button class="preset-btn" onclick="openMedModal('Thyroid Tablet', 'Morning', '07:00', 30)">Thyroid<span>Empty Stomach</span></button>
+        <button class="preset-btn" onclick="openMedModal('Vitamin D3 / B12', 'Afternoon', '13:30', 15)">Vitamin / Supplement<span>After Lunch</span></button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span id="lblActiveMeds">Active Medicines &amp; Stock</span><span id="medLimitText" style="font-size:11px;color:var(--muted)"></span></div>
+      <div id="medsList"></div>
+    </div>
+  </section>
+
+  <!-- TAB 3: VITALS -->
+  <section id="tab-vitals" class="page">
+    <div class="card">
+      <div class="card-title"><span id="lblLogVitals">Log Vitals</span></div>
+      <div class="row-2">
+        <div>
+          <label>Type</label>
+          <select id="vitalType" onchange="toggleVitalInputs()">
+            <option value="bp">Blood Pressure (BP)</option>
+            <option value="sugar">Blood Sugar (mg/dL)</option>
+            <option value="weight">Weight (kg)</option>
+          </select>
+        </div>
+        <div id="vitalContextWrap" style="display:none">
+          <label>Timing</label>
+          <select id="vitalContext">
+            <option value="Fasting">Fasting</option>
+            <option value="PP">After Meal (PP)</option>
+            <option value="Random">Random</option>
+          </select>
+        </div>
+      </div>
+      <div id="bpInputs" class="row-2">
+        <div><label>Systolic (Upper)</label><input type="number" id="bpSys" placeholder="120" /></div>
+        <div><label>Diastolic (Lower)</label><input type="number" id="bpDia" placeholder="80" /></div>
+      </div>
+      <div id="singleVitalWrap" style="display:none">
+        <label id="singleVitalLabel">Value</label>
+        <input type="number" id="singleVitalVal" placeholder="105" />
+      </div>
+      <button class="btn full" onclick="saveVital()" id="btnSaveVital">Save Reading</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblTrend">Trend &amp; Recent Readings</span></div>
+      <div id="vitalsChart" style="margin-bottom:10px"></div>
+      <div id="vitalsList"></div>
+    </div>
+  </section>
+
+  <!-- TAB 4: VAULT & PDF -->
+  <section id="tab-vault" class="page">
+    <div class="card">
+      <div class="card-title"><span id="lblDocReport">Doctor Visit Summary Report</span></div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Generate a clean 30-day adherence, active medicine list, and vitals summary for your doctor visit.</p>
+      <button id="lblGenReport" class="btn full" onclick="generateDoctorReport()">Generate Doctor Report (Print / PDF)</button>
+      <div id="reportPreview" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblEmergency">Emergency Health Card</span></div>
+      <div class="row-2">
+        <div><label>Blood Group</label><input id="emBlood" placeholder="O+" /></div>
+        <div><label>Emergency Contact</label><input id="emPhone" placeholder="+91 98..." /></div>
+      </div>
+      <label>Allergies / Conditions</label>
+      <input id="emAllergies" placeholder="Penicillin, Dust, Diabetes" />
+      <button id="lblSaveEm" class="btn sec full" onclick="saveEmergencyCard()">Save Emergency Card</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>Offline Vault Backup</span></div>
+      <div class="row-2">
+        <button class="btn sec" onclick="exportBackup()">Export JSON</button>
+        <label class="btn sec" style="text-align:center;margin:0;cursor:pointer">Restore JSON<input type="file" accept=".json" style="display:none" onchange="importBackup(event)" /></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 5: SETTINGS & PRO -->
+  <section id="tab-settings" class="page">
+    <div class="card" id="proCard">
+      <div class="card-title"><span>CareVault Pro (Zero Ads Forever)</span></div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px" id="proStatusDesc"></p>
+      <div id="proButtons" style="display:grid;gap:8px">
+        <button class="btn" onclick="buyPlan('carevault_pro_lifetime')">Unlock Lifetime Pro — One-Time</button>
+        <button class="btn sec" onclick="buyPlan('carevault_pro_yearly')">Yearly Family Plan</button>
+        <button class="btn sec" onclick="buyPlan('carevault_pro_monthly')">Monthly Plan</button>
+        <button class="btn sec sm" onclick="restorePurchases()">Restore Purchase</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblLang">Language (Global Auto-Detect)</span></div>
+      <select id="langSelect" onchange="setLanguage(this.value)">
+        <option value="en">English (Global)</option>
+        <option value="gu">ગુજરાતી (Gujarati)</option>
+        <option value="hi">हिन्दी (Hindi)</option>
+        <option value="es">Español (Spanish)</option>
+        <option value="fr">Français (French)</option>
+        <option value="ar">العربية (Arabic)</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblAlarmVoice">Loud Alarm &amp; Voice Reminder</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:13px">Speak Medicine Name &amp; Loud Alarm</span>
+        <input type="checkbox" id="voiceToggle" checked onchange="toggleVoice(this.checked)" style="width:20px;height:20px;margin:0" />
+      </div>
+      <button class="btn sec full" onclick="testAlarmAndVoice()">Test Loud Alarm &amp; Voice Now</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblTheme">Appearance Theme</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <button class="btn sec sm" onclick="setTheme('dark')">Midnight</button>
+        <button class="btn sec sm" onclick="setTheme('ivory')">Ivory Light</button>
+        <button class="btn sec sm" onclick="setTheme('slate')">Deep Slate</button>
+      </div>
+      <button class="btn sec sm full" style="margin-top:10px" onclick="openSplash()">Replay 3D Welcome Screen</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span id="lblDisclaimer">Wellness &amp; Privacy Disclaimer</span></div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.5;margin:0">
+        CareVault is a personal wellness tracking and medication reminder tool. It does not provide medical diagnosis, clinical advice, or treatment recommendations. All health data stays strictly offline on your device.
+      </p>
+    </div>
+  </section>
+</div>
+
+<!-- ALARM RINGING MODAL -->
+<div id="alarmModal" class="modal-backdrop" style="z-index:500;align-items:center;">
+  <div class="modal-sheet" style="border-radius:20px;margin:16px;text-align:center;">
+    <div style="font-size:40px;margin-bottom:8px;">⏰💊</div>
+    <h3 id="alarmModalTitle" style="margin:0 0 6px;color:var(--accent);">CareVault Medicine Alarm</h3>
+    <p id="alarmModalBody" style="font-size:14px;margin:0 0 16px;color:var(--text);"></p>
+    <div class="row-2">
+      <button class="btn" onclick="stopAlarmAndTake()">Take Now</button>
+      <button class="btn sec" onclick="snoozeAlarm5m()">Snooze 5m</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MED MODAL -->
+<div id="medModal" class="modal-backdrop">
+  <div class="modal-sheet">
+    <div class="card-title"><span id="lblAddMed">Add Medicine</span><button class="btn sec sm" onclick="closeMedModal()">Close</button></div>
+    <label>Medicine Name</label>
+    <input id="mName" placeholder="e.g., Metformin 500mg" />
+    <div class="row-2">
+      <div>
+        <label>Slot</label>
+        <select id="mSlot" onchange="onSlotChange()">
+          <option value="Morning">Morning (4AM–12PM)</option>
+          <option value="Afternoon">Afternoon (12PM–5PM)</option>
+          <option value="Night">Night (5PM–4AM)</option>
+        </select>
+      </div>
+      <div>
+        <label>Period (AM / PM)</label>
+        <div class="ampm-wrap">
+          <button type="button" id="btnAM" class="ampm-btn active-am" onclick="setPeriod('AM')">☀️ AM</button>
+          <button type="button" id="btnPM" class="ampm-btn" onclick="setPeriod('PM')">🌙 PM</button>
+        </div>
+      </div>
+    </div>
+    <div class="row-2">
+      <div>
+        <label>Hour (1–12)</label>
+        <select id="mHour"></select>
+      </div>
+      <div>
+        <label>Minute (00–59)</label>
+        <select id="mMin"></select>
+      </div>
+    </div>
+    <div id="slotWarnBox" class="slot-warn"></div>
+    <div class="row-2">
+      <div><label>Pill Stock (Qty)</label><input type="number" id="mStock" value="30" /></div>
+      <div>
+        <label>Instruction</label>
+        <select id="mNote">
+          <option>After Meal</option>
+          <option>Before Meal</option>
+          <option>Empty Stomach</option>
+          <option>Bedtime</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn full" id="lblSaveAlarm" onclick="saveMedicine()">Save &amp; Schedule Alarm</button>
+  </div>
+</div>
+
+<!-- REFILL STOCK MODAL -->
+<div id="refillModal" class="modal-backdrop">
+  <div class="modal-sheet">
+    <div class="card-title"><span id="refillTitle">Refill Medicine Stock</span><button class="btn sec sm" onclick="closeRefillModal()">Close</button></div>
+    <p id="refillCurrent" style="font-size:13px;color:var(--muted);margin:0 0 12px"></p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      <button class="btn sec sm" onclick="addRefillQty(10)">+10 Tabs</button>
+      <button class="btn sec sm" onclick="addRefillQty(15)">+15 Tabs</button>
+      <button class="btn sec sm" onclick="addRefillQty(30)">+30 Tabs</button>
+    </div>
+    <label>Or Enter Custom Qty to Add</label>
+    <input type="number" id="refillCustomQty" placeholder="e.g., 10" />
+    <button class="btn full" onclick="addRefillCustom()">Add to Stock</button>
+  </div>
+</div>
+
+<!-- ADD PROFILE MODAL -->
+<div id="profModal" class="modal-backdrop">
+  <div class="modal-sheet">
+    <div class="card-title"><span id="lblAddMember">Add Family Member</span><button class="btn sec sm" onclick="closeProfModal()">Close</button></div>
+    <label>Name / Relation</label>
+    <input id="pName" placeholder="e.g., Dad, Mom, Spouse, Child" />
+    <button class="btn full" id="lblAddProfile" onclick="saveProfile()">Add Profile</button>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-tab="today" onclick="switchTab('today')"><span class="nav-ico">💊</span><span id="navToday">Today</span></button>
+  <button class="nav-btn" data-tab="meds" onclick="switchTab('meds')"><span class="nav-ico">📦</span><span id="navMeds">Meds</span></button>
+  <button class="nav-btn" data-tab="vitals" onclick="switchTab('vitals')"><span class="nav-ico">❤️</span><span id="navVitals">Vitals</span></button>
+  <button class="nav-btn" data-tab="vault" onclick="switchTab('vault')"><span class="nav-ico">📄</span><span id="navVault">Vault</span></button>
+  <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')"><span class="nav-ico">⚙️</span><span id="navPro">Pro</span></button>
+</nav>
+
+<script>
+const STORAGE_KEY = 'carevault_db_v1';
+const TRIAL_DAYS = 14;
+const FREE_MAX_MEDS = 3;
+
+const I18N = {
+  "en": {
+    "tts": "en-IN",
+    "dir": "ltr",
+    "brandSub": "100% Offline Family Health Vault",
+    "welcomeSub": "100% Offline • Zero Ads • Family Medicine, Refill & Vitals Vault",
+    "welcomeBtn": "Open My Health Vault",
+    "todayGreeting": "Today's Medicine Plan",
+    "dosesSummary": "{taken} of {total} doses taken today",
+    "navToday": "Today",
+    "navMeds": "Meds",
+    "navVitals": "Vitals",
+    "navVault": "Vault",
+    "navPro": "Pro",
+    "lblQuickPresets": "Quick Add Presets",
+    "lblActiveMeds": "Active Medicines & Stock",
+    "lblLogVitals": "Log Vitals",
+    "lblTrend": "Trend & Recent Readings",
+    "lblDocReport": "Doctor Visit Summary Report",
+    "lblEmergency": "Emergency Health Card",
+    "btnTake": "Take",
+    "btnSkip": "Skip",
+    "btnRefill": "+ Refill",
+    "btnRemove": "Remove",
+    "btnAddFamily": "+ Family",
+    "btnCustom": "+ Custom",
+    "lblTaken": "Taken",
+    "lblSkipped": "Skipped",
+    "lblRefillSoon": "Refill Soon ({n} left)",
+    "lblStock": "Stock",
+    "lblSaveReading": "Save Reading",
+    "lblGenReport": "Generate Doctor Report (Print / PDF)",
+    "lblSaveEm": "Save Emergency Card",
+    "lblLang": "Language (Global Auto-Detect)",
+    "lblAlarmVoice": "Loud Alarm & Voice Reminder",
+    "lblTheme": "Appearance Theme",
+    "lblDisclaimer": "Wellness & Privacy Disclaimer",
+    "lblAddMed": "Add Medicine",
+    "lblSaveAlarm": "Save & Schedule Alarm",
+    "lblAddMember": "Add Family Member",
+    "lblAddProfile": "Add Profile",
+    "lblNoMeds": "No medicines added for this profile yet. Tap Meds below to add one."
+  },
+  "gu": {
+    "tts": "gu-IN",
+    "dir": "ltr",
+    "brandSub": "૧૦૦% ઓફલાઇન ફેમિલી હેલ્થ વૉલ્ટ",
+    "welcomeSub": "૧૦૦% ઓફલાઇન • ઝીરો એડ્સ • પરિવારની દવા અને બીપી/શુગર ટ્રેકર",
+    "welcomeBtn": "મારું હેલ્થ વૉલ્ટ ખોલો",
+    "todayGreeting": "આજની દવાનો પ્લાન",
+    "dosesSummary": "આજે {total} માંથી {taken} ડોઝ લીધા",
+    "navToday": "આજે",
+    "navMeds": "દવાઓ",
+    "navVitals": "વાઇટલ્સ",
+    "navVault": "વૉલ્ટ",
+    "navPro": "પ્રો",
+    "lblQuickPresets": "ઝડપી દવા ઉમેરો",
+    "lblActiveMeds": "ચાલુ દવાઓ અને સ્ટોક",
+    "lblLogVitals": "બીપી / શુગર નોંધો",
+    "lblTrend": "ગ્રાફ અને તાજા રીડિંગ્સ",
+    "lblDocReport": "ડૉક્ટર વિઝિટ પીડીએફ રિપોર્ટ",
+    "lblEmergency": "ઇમરજન્સી હેલ્થ કાર્ડ",
+    "btnTake": "લીધી",
+    "btnSkip": "છોડો",
+    "btnRefill": "+ ઉમેરો",
+    "btnRemove": "હટાવો",
+    "btnAddFamily": "+ પરિવાર",
+    "btnCustom": "+ નવી દવા",
+    "lblTaken": "લીધેલ",
+    "lblSkipped": "છોડેલ",
+    "lblRefillSoon": "સ્ટોક ઓછો ({n} બાકી)",
+    "lblStock": "સ્ટોક",
+    "lblSaveReading": "રીડિંગ સેવ કરો",
+    "lblGenReport": "ડૉક્ટર રિપોર્ટ (PDF) બનાવો",
+    "lblSaveEm": "ઇમરજન્સી કાર્ડ સેવ કરો",
+    "lblLang": "ભાષા (Language)",
+    "lblAlarmVoice": "લાઉડ એલાર્મ અને વોઇસ રિમાઇન્ડર",
+    "lblTheme": "એપ થીમ",
+    "lblDisclaimer": "હેલ્થ અને પ્રાઇવસી ડિસ્ક્લેમર",
+    "lblAddMed": "નવી દવા ઉમેરો",
+    "lblSaveAlarm": "સેવ અને એલાર્મ સેટ કરો",
+    "lblAddMember": "પરિવારના સભ્ય ઉમેરો",
+    "lblAddProfile": "પ્રોફાઇલ ઉમેરો",
+    "lblNoMeds": "હજુ કોઈ દવા ઉમેરી નથી. નીચે 'દવાઓ' પર ટૅપ કરીને દવા ઉમેરો."
+  },
+  "hi": {
+    "tts": "hi-IN",
+    "dir": "ltr",
+    "brandSub": "100% ऑफ़लाइन फैमिली हेल्थ वॉल्ट",
+    "welcomeSub": "100% ऑफ़लाइन • बिना विज्ञापन • परिवार की दवा और बीपी/शुगर ट्रैकर",
+    "welcomeBtn": "मेरा हेल्थ वॉल्ट खोलें",
+    "todayGreeting": "आज की दवा योजना",
+    "dosesSummary": "आज {total} में से {taken} खुराक ली गई",
+    "navToday": "आज",
+    "navMeds": "दवाएं",
+    "navVitals": "वाइटल्स",
+    "navVault": "वॉल्ट",
+    "navPro": "प्रो",
+    "lblQuickPresets": "त्वरित दवा जोड़ें",
+    "lblActiveMeds": "सक्रिय दवाएं और स्टॉक",
+    "lblLogVitals": "बीपी / शुगर दर्ज करें",
+    "lblTrend": "ग्राफ़ और हाल के रिकॉर्ड",
+    "lblDocReport": "डॉक्टर विज़िट रिपोर्ट",
+    "lblEmergency": "आपातकालीन हेल्थ कार्ड",
+    "btnTake": "ली गई",
+    "btnSkip": "छोड़ें",
+    "btnRefill": "+ रीफिल",
+    "btnRemove": "हटाएं",
+    "btnAddFamily": "+ परिवार",
+    "btnCustom": "+ नई दवा",
+    "lblTaken": "ली गई",
+    "lblSkipped": "छोड़ी गई",
+    "lblRefillSoon": "जल्द खत्म ({n} शेष)",
+    "lblStock": "स्टॉक",
+    "lblSaveReading": "रीडिंग सेव करें",
+    "lblGenReport": "डॉक्टर रिपोर्ट (PDF) बनाएं",
+    "lblSaveEm": "आपातकालीन कार्ड सेव करें",
+    "lblLang": "भाषा (Language)",
+    "lblAlarmVoice": "तेज़ अलार्म और वॉयस रिमाइंडर",
+    "lblTheme": "ऐप थीम",
+    "lblDisclaimer": "स्वास्थ्य और गोपनीयता अस्वीकरण",
+    "lblAddMed": "दवा जोड़ें",
+    "lblSaveAlarm": "सेव और अलार्म सेट करें",
+    "lblAddMember": "परिवार का सदस्य जोड़ें",
+    "lblAddProfile": "प्रोफ़ाइल जोड़ें",
+    "lblNoMeds": "अभी कोई दवा नहीं जोड़ी गई है। दवा जोड़ने के लिए नीचे 'दवाएं' पर टैप करें।"
+  },
+  "es": {
+    "tts": "es-ES",
+    "dir": "ltr",
+    "brandSub": "Bóveda de Salud Familiar Sin Conexión",
+    "welcomeSub": "100% Sin Conexión • Cero Anuncios • Medicinas y Signos Vitales",
+    "welcomeBtn": "Abrir Mi Bóveda",
+    "todayGreeting": "Plan de Medicinas de Hoy",
+    "dosesSummary": "{taken} de {total} dosis tomadas hoy",
+    "navToday": "Hoy",
+    "navMeds": "Medicina",
+    "navVitals": "Vitales",
+    "navVault": "Bóveda",
+    "navPro": "Pro",
+    "lblQuickPresets": "Añadir Rápido",
+    "lblActiveMeds": "Medicinas y Stock",
+    "lblLogVitals": "Registrar Signos",
+    "lblTrend": "Tendencia y Registros",
+    "lblDocReport": "Informe para el Médico",
+    "lblEmergency": "Tarjeta de Emergencia",
+    "btnTake": "Tomar",
+    "btnSkip": "Omitir",
+    "btnRefill": "+ Reponer",
+    "btnRemove": "Quitar",
+    "btnAddFamily": "+ Familia",
+    "btnCustom": "+ Nueva",
+    "lblTaken": "Tomada",
+    "lblSkipped": "Omitida",
+    "lblRefillSoon": "Reponer ({n} rest.)",
+    "lblStock": "Stock",
+    "lblSaveReading": "Guardar Registro",
+    "lblGenReport": "Generar Informe PDF",
+    "lblSaveEm": "Guardar Tarjeta",
+    "lblLang": "Idioma (Language)",
+    "lblAlarmVoice": "Alarma Fuerte y Voz",
+    "lblTheme": "Tema de Apariencia",
+    "lblDisclaimer": "Aviso de Bienestar y Privacidad",
+    "lblAddMed": "Añadir Medicina",
+    "lblSaveAlarm": "Guardar y Programar Alarma",
+    "lblAddMember": "Añadir Familiar",
+    "lblAddProfile": "Añadir Perfil",
+    "lblNoMeds": "Sin medicinas aún. Toca Medicina abajo para añadir una."
+  },
+  "fr": {
+    "tts": "fr-FR",
+    "dir": "ltr",
+    "brandSub": "Coffre Santé Familial Hors Ligne",
+    "welcomeSub": "100% Hors Ligne • Zéro Pub • Suivi Médicaments & Constantes",
+    "welcomeBtn": "Ouvrir Mon Coffre",
+    "todayGreeting": "Plan Médicaments du Jour",
+    "dosesSummary": "{taken} sur {total} doses prises aujourd'hui",
+    "navToday": "Auj.",
+    "navMeds": "Médic.",
+    "navVitals": "Const.",
+    "navVault": "Coffre",
+    "navPro": "Pro",
+    "lblQuickPresets": "Ajout Rapide",
+    "lblActiveMeds": "Médicaments & Stock",
+    "lblLogVitals": "Saisir Constantes",
+    "lblTrend": "Tendance & Mesures",
+    "lblDocReport": "Rapport Médical PDF",
+    "lblEmergency": "Carte d'Urgence",
+    "btnTake": "Prendre",
+    "btnSkip": "Passer",
+    "btnRefill": "+ Stock",
+    "btnRemove": "Suppr.",
+    "btnAddFamily": "+ Famille",
+    "btnCustom": "+ Nouveau",
+    "lblTaken": "Prise",
+    "lblSkipped": "Passée",
+    "lblRefillSoon": "Stock bas ({n})",
+    "lblStock": "Stock",
+    "lblSaveReading": "Enregistrer",
+    "lblGenReport": "Générer Rapport PDF",
+    "lblSaveEm": "Enregistrer Carte",
+    "lblLang": "Langue (Language)",
+    "lblAlarmVoice": "Alarme Forte & Voix",
+    "lblTheme": "Thème Visuel",
+    "lblDisclaimer": "Avertissement Bien-être & Vie Privée",
+    "lblAddMed": "Ajouter Médicament",
+    "lblSaveAlarm": "Enregistrer & Alarme",
+    "lblAddMember": "Ajouter un Proche",
+    "lblAddProfile": "Ajouter Profil",
+    "lblNoMeds": "Aucun médicament. Appuyez sur Médic. ci-dessous pour en ajouter."
+  },
+  "ar": {
+    "tts": "ar-SA",
+    "dir": "rtl",
+    "brandSub": "خزنة صحة العائلة بدون إنترنت",
+    "welcomeSub": "100% بدون إنترنت • بدون إعلانات • متابعة الأدوية والمؤشرات الحيوية",
+    "welcomeBtn": "افتح خزنتي الصحية",
+    "todayGreeting": "خطة أدوية اليوم",
+    "dosesSummary": "تم تناول {taken} من أصل {total} جرعات اليوم",
+    "navToday": "اليوم",
+    "navMeds": "الأدوية",
+    "navVitals": "المؤشرات",
+    "navVault": "الخزنة",
+    "navPro": "برو",
+    "lblQuickPresets": "إضافة سريعة",
+    "lblActiveMeds": "الأدوية والمخزون",
+    "lblLogVitals": "تسجيل القياس",
+    "lblTrend": "الرسم البياني والقراءات",
+    "lblDocReport": "تقرير زيارة الطبيب",
+    "lblEmergency": "بطاقة الطوارئ",
+    "btnTake": "تأكيد",
+    "btnSkip": "تخطي",
+    "btnRefill": "+ تعبئة",
+    "btnRemove": "حذف",
+    "btnAddFamily": "+ عائلة",
+    "btnCustom": "+ دواء",
+    "lblTaken": "تم التناول",
+    "lblSkipped": "تم التخطي",
+    "lblRefillSoon": "قرب النفاد ({n})",
+    "lblStock": "المخزون",
+    "lblSaveReading": "حفظ القراءة",
+    "lblGenReport": "إنشاء تقرير PDF",
+    "lblSaveEm": "حفظ بطاقة الطوارئ",
+    "lblLang": "اللغة (Language)",
+    "lblAlarmVoice": "منبه قوي وتذكير صوتي",
+    "lblTheme": "مظهر التطبيق",
+    "lblDisclaimer": "إخلاء مسؤولية الصحة والخصوصية",
+    "lblAddMed": "إضافة دواء",
+    "lblSaveAlarm": "حفظ وضبط المنبه",
+    "lblAddMember": "إضافة فرد عائلة",
+    "lblAddProfile": "إضافة ملف",
+    "lblNoMeds": "لا توجد أدوية بعد. اضغط على الأدوية بالأسفل للإضافة."
+  }
+};
+function tr(key) {
+  const lang = I18N[db.lang] || I18N.en;
+  return lang[key] || I18N.en[key] || key;
+}
+
+function detectDefaultLang() {
+  const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return I18N[nav] ? nav : 'en';
+}
+
+let db = loadDB();
+
+function loadDB() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {
+    firstOpened: Date.now(),
+    isPro: false,
+    theme: 'dark',
+    lang: detectDefaultLang(),
+    voiceEnabled: true,
+    activeProfileId: 'self',
+    profiles: [{ id: 'self', name: 'Self', blood: '', phone: '', allergies: '' }],
+    meds: [],
+    logs: {},
+    vitals: []
+  };
+}
+
+function saveDB() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) {}
+}
+
+function closeSplash() {
+  document.getElementById('welcomeSplash').classList.add('hide');
+}
+function openSplash() {
+  document.getElementById('welcomeSplash').classList.remove('hide');
+}
+
+function setLanguage(code) {
+  db.lang = I18N[code] ? code : 'en';
+  saveDB();
+  renderAll();
+  showToast('Language updated');
+}
+
+function applyLanguage() {
+  const t = I18N[db.lang] || I18N.en;
+  document.documentElement.dir = t.dir;
+  const ids = ['brandSub','welcomeSub','todayGreeting','navToday','navMeds','navVitals','navVault','navPro','lblQuickPresets','lblActiveMeds','lblLogVitals','lblTrend','lblDocReport','lblEmergency','btnCustom','lblGenReport','lblSaveEm','lblLang','lblAlarmVoice','lblTheme','lblDisclaimer','lblAddMed','lblSaveAlarm','lblAddMember','lblAddProfile'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && t[id]) el.textContent = t[id];
+  });
+  const bsv = document.getElementById('btnSaveVital');
+  if (bsv && t.lblSaveReading) bsv.textContent = t.lblSaveReading;
+  const wb = document.getElementById('welcomeStartBtn');
+  if (wb) wb.textContent = t.welcomeBtn;
+  const ls = document.getElementById('langSelect');
+  if (ls) ls.value = db.lang || 'en';
+}
+
+function daysUsed() {
+  return Math.floor((Date.now() - db.firstOpened) / (1000 * 60 * 60 * 24));
+}
+
+function hasProAccess() {
+  return db.isPro || daysUsed() < TRIAL_DAYS;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(window._tt);
+  window._tt = setTimeout(() => { el.style.display = 'none'; }, 2400);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`.nav-btn[data-tab="${name}"]`).classList.add('active');
+  
+renderAll();
+renderAll();
+}
+
+function setTheme(t) {
+  db.theme = t;
+  saveDB();
+  applyTheme();
+}
+
+function applyTheme() {
+  document.body.classList.remove('theme-ivory', 'theme-slate');
+  if (db.theme === 'ivory') document.body.classList.add('theme-ivory');
+  if (db.theme === 'slate') document.body.classList.add('theme-slate');
+}
+
+function renderProfiles() {
+  const wrap = document.getElementById('profileStrip');
+  wrap.innerHTML = db.profiles.map(p =>
+    `<button class="prof-chip ${p.id === db.activeProfileId ? 'active' : ''}" onclick="selectProfile('${p.id}')">${esc(p.name)}</button>`
+  ).join('') + `<button class="prof-chip add" onclick="openProfModal()">${tr('btnAddFamily')}</button>`;
+}
+
+function selectProfile(id) {
+  db.activeProfileId = id;
+  saveDB();
+  renderAll();
+}
+
+function openProfModal() {
+  if (!hasProAccess() && db.profiles.length >= 1) {
+    showToast('Family profiles require Pro');
+    switchTab('settings');
+    return;
+  }
+  document.getElementById('profModal').classList.add('open');
+}
+function closeProfModal() { document.getElementById('profModal').classList.remove('open'); }
+
+function saveProfile() {
+  const name = document.getElementById('pName').value.trim();
+  if (!name) return showToast('Enter member name');
+  const id = 'p_' + Date.now();
+  db.profiles.push({ id, name, blood: '', phone: '', allergies: '' });
+  db.activeProfileId = id;
+  saveDB();
+  document.getElementById('pName').value = '';
+  closeProfModal();
+  renderAll();
+  showToast('Added ' + name);
+}
+
+let _pickedPeriod = 'AM';
+function initTimeDropdowns() {
+  const hSel = document.getElementById('mHour');
+  const mSel = document.getElementById('mMin');
+  if (!hSel || hSel.options.length) return;
+  for (let h = 1; h <= 12; h++) {
+    const o = document.createElement('option');
+    o.value = h; o.textContent = String(h).padStart(2, '0');
+    hSel.appendChild(o);
+  }
+  for (let m = 0; m < 60; m++) {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = String(m).padStart(2, '0');
+    mSel.appendChild(o);
+  }
+}
+function setPeriod(p) {
+  _pickedPeriod = p;
+  document.getElementById('btnAM').className = 'ampm-btn' + (p === 'AM' ? ' active-am' : '');
+  document.getElementById('btnPM').className = 'ampm-btn' + (p === 'PM' ? ' active-pm' : '');
+  document.getElementById('slotWarnBox').style.display = 'none';
+}
+function onSlotChange() {
+  const slot = document.getElementById('mSlot').value;
+  if (slot === 'Morning') { setPeriod('AM'); document.getElementById('mHour').value = 8; document.getElementById('mMin').value = 0; }
+  else if (slot === 'Afternoon') { setPeriod('PM'); document.getElementById('mHour').value = 1; document.getElementById('mMin').value = 30; }
+  else { setPeriod('PM'); document.getElementById('mHour').value = 9; document.getElementById('mMin').value = 0; }
+}
+function setPickerFrom24h(timeStr) {
+  initTimeDropdowns();
+  const [hh, mm] = (timeStr || '08:00').split(':').map(Number);
+  const p = hh >= 12 ? 'PM' : 'AM';
+  const h12 = (hh % 12) || 12;
+  setPeriod(p);
+  document.getElementById('mHour').value = h12;
+  document.getElementById('mMin').value = mm || 0;
+}
+function get24hFromPicker() {
+  const h12 = parseInt(document.getElementById('mHour').value || '8', 10);
+  const mm = parseInt(document.getElementById('mMin').value || '0', 10);
+  let hh = h12 % 12;
+  if (_pickedPeriod === 'PM') hh += 12;
+  return { hh, mm, str: String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') };
+}
+
+function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  if (!hasProAccess() && profMeds.length >= FREE_MAX_MEDS) {
+    showToast('Free tier limit: 3 medicines. Upgrade to Pro!');
+    switchTab('settings');
+    return;
+  }
+  document.getElementById('mName').value = name;
+  document.getElementById('mSlot').value = slot;
+  setPickerFrom24h(time);
+  document.getElementById('mStock').value = stock;
+  document.getElementById('slotWarnBox').style.display = 'none';
+  document.getElementById('medModal').classList.add('open');
+}
+function closeMedModal() { document.getElementById('medModal').classList.remove('open'); }
+
+async function saveMedicine() {
+  const name = document.getElementById('mName').value.trim();
+  const slot = document.getElementById('mSlot').value;
+  const { hh, str: time } = get24hFromPicker();
+  const stock = parseInt(document.getElementById('mStock').value || '30', 10);
+  const note = document.getElementById('mNote').value;
+  if (!name) return showToast('Enter medicine name');
+
+  const warnBox = document.getElementById('slotWarnBox');
+  let errMsg = '';
+  if (slot === 'Morning' && !(hh >= 4 && hh < 12)) {
+    errMsg = '⚠️ Morning slot requires a time between 4:00 AM and 11:59 AM (or change the Slot).';
+  } else if (slot === 'Afternoon' && !(hh >= 12 && hh < 17)) {
+    errMsg = '⚠️ Afternoon slot requires a time between 12:00 PM and 4:59 PM (or change the Slot).';
+  } else if (slot === 'Night' && !(hh >= 17 || hh < 4)) {
+    errMsg = '⚠️ Night slot requires a time between 5:00 PM and 3:59 AM (or change the Slot).';
+  }
+  if (errMsg) {
+    warnBox.textContent = errMsg;
+    warnBox.style.display = 'block';
+    showToast('Slot and Time do not match!');
+    return;
+  }
+  warnBox.style.display = 'none';
+
+  const med = { id: 'm_' + Date.now(), profileId: db.activeProfileId, name, slot, time, stock, note };
+  db.meds.push(med);
+  saveDB();
+  closeMedModal();
+  await scheduleMedNotification(med);
+  renderAll();
+  showToast('Medicine saved');
+}
+
+async function setupNotificationChannel() {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN) return;
+    await LN.requestPermissions();
+    await LN.createChannel({
+      id: 'carevault_alarm_ch',
+      name: 'Medicine Alarms',
+      description: 'High-priority medicine alarm reminders',
+      importance: 5,
+      visibility: 1,
+      vibration: true
+    });
+    LN.addListener('localNotificationReceived', (notif) => {
+      triggerAlarmAndVoice(notif.body || 'Time for your medicine');
+    });
+    LN.addListener('localNotificationActionPerformed', (act) => {
+      triggerAlarmAndVoice(act.notification?.body || 'Time for your medicine');
+    });
+  } catch (e) {}
+}
+
+window._audioCtx = null;
+function unlockAudio() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window._audioCtx) window._audioCtx = new Ctx();
+    if (window._audioCtx.state === 'suspended') window._audioCtx.resume();
+  } catch (e) {}
+}
+document.addEventListener('click', unlockAudio, { passive: true });
+document.addEventListener('touchstart', unlockAudio, { passive: true });
+
+function playAlarmTone() {
+  try {
+    unlockAudio();
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 500]);
+    const ctx = window._audioCtx;
+    if (!ctx) return;
+    [0, 0.18, 0.36].forEach((delay) => {
+      [987, 1318].forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+        gain.gain.setValueAtTime(0.38, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.14);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.15);
+      });
+    });
+  } catch (e) {}
+}
+
+async function speakText(text) {
+  if (db.voiceEnabled === false) return;
+  const langTag = (I18N[db.lang] || I18N.en).tts;
+  try {
+    const TTS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech;
+    if (TTS) {
+      await TTS.speak({ text, lang: langTag, rate: 0.95, pitch: 1.0, volume: 1.0 });
+      return;
+    }
+  } catch (e) {}
+  try {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = langTag;
+      u.rate = 0.95;
+      u.volume = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+  } catch (e) {}
+}
+
+let _voiceTimeout = null;
+function triggerAlarmAndVoice(message, withVoice = true) {
+  if (db.voiceEnabled === false) return;
+  playAlarmTone();
+  clearTimeout(_voiceTimeout);
+  if (withVoice) {
+    _voiceTimeout = setTimeout(() => {
+      if (_alarmLoop || document.getElementById('alarmModal').classList.contains('open')) {
+        speakText(message);
+      }
+    }, 900);
+  }
+}
+
+function testAlarmAndVoice() {
+  const prof = db.profiles.find(p => p.id === db.activeProfileId);
+  const msg = `CareVault Alarm. Time for ${prof ? prof.name : 'your'} medicine.`;
+  triggerAlarmAndVoice(msg);
+  showToast('Playing Loud Alarm + Voice...');
+}
+
+function toggleVoice(val) {
+  db.voiceEnabled = val;
+  saveDB();
+  showToast(val ? 'Alarm & Voice ON' : 'Alarm & Voice OFF');
+}
+
+async function scheduleMedNotification(med) {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN) return;
+    await LN.requestPermissions();
+    const prof = db.profiles.find(p => p.id === med.profileId);
+    const who = prof ? prof.name : 'Family';
+    const [hh, mm] = med.time.split(':').map(Number);
+    await LN.schedule({
+      notifications: [{
+        id: Math.floor(Math.random() * 100000),
+        title: `CareVault Alarm (${who})`,
+        body: `Time for ${who}: ${med.name}, ${med.note}`,
+        channelId: 'carevault_alarm_ch',
+        schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
+      }]
+    });
+  } catch (e) {}
+}
+
+function logDose(medId, status) {
+  const k = todayKey();
+  if (!db.logs[k]) db.logs[k] = {};
+  const prev = db.logs[k][medId];
+  db.logs[k][medId] = status;
+  const med = db.meds.find(m => m.id === medId);
+  if (med && status === 'taken' && prev !== 'taken' && med.stock > 0) {
+    med.stock -= 1;
+  }
+  if (_snoozeTimers[medId]) { clearTimeout(_snoozeTimers[medId]); delete _snoozeTimers[medId]; }
+  saveDB();
+  renderAll();
+  showToast(status === 'taken' ? 'Marked Taken' : 'Marked Skipped');
+}
+
+let _refillMedId = null;
+function openRefillModal(medId) {
+  const m = db.meds.find(x => x.id === medId);
+  if (!m) return;
+  _refillMedId = medId;
+  document.getElementById('refillTitle').textContent = `Refill: ${m.name}`;
+  document.getElementById('refillCurrent').textContent = `Current Stock: ${m.stock} tablets`;
+  document.getElementById('refillCustomQty').value = '';
+  document.getElementById('refillModal').classList.add('open');
+}
+function closeRefillModal() { document.getElementById('refillModal').classList.remove('open'); }
+function addRefillQty(qty) {
+  const m = db.meds.find(x => x.id === _refillMedId);
+  if (!m || qty <= 0) return;
+  m.stock = (parseInt(m.stock, 10) || 0) + qty;
+  saveDB(); closeRefillModal(); renderAll();
+  showToast(`Stock updated: ${m.stock} left`);
+}
+function addRefillCustom() {
+  const q = parseInt(document.getElementById('refillCustomQty').value || '0', 10);
+  if (q <= 0) return showToast('Enter valid quantity');
+  addRefillQty(q);
+}
+function deleteMed(medId) {
+  db.meds = db.meds.filter(m => m.id !== medId);
+  saveDB();
+  renderAll();
+}
+
+function renderToday() {
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const k = todayKey();
+  const dayLog = db.logs[k] || {};
+  const takenCount = profMeds.filter(m => dayLog[m.id] === 'taken').length;
+  const pct = profMeds.length ? Math.round((takenCount / profMeds.length) * 100) : 0;
+
+  const ring = document.getElementById('adherenceRing');
+  ring.style.setProperty('--pct', pct);
+  ring.setAttribute('data-label', pct + '%');
+  document.getElementById('todaySummary').textContent = tr('dosesSummary').replace('{taken}', takenCount).replace('{total}', profMeds.length);
+
+  const list = document.getElementById('todayList');
+  if (!profMeds.length) {
+    list.innerHTML = `<div class="card"><p style="margin:0;color:var(--muted);font-size:13px">${tr('lblNoMeds')}</p></div>`;
+    return;
+  }
+  list.innerHTML = profMeds.map(m => {
+    const st = dayLog[m.id];
+    const lowStock = hasProAccess() && m.stock <= 5;
+    return `<div class="med-item">
+      <div class="med-info">
+        <h4>${esc(m.name)}</h4>
+        <p>${m.slot} • ${m.time} • ${esc(m.note)}</p>
+        ${st === 'taken' ? `<span class="badge ok">${tr('lblTaken')}</span>` : st === 'skipped' ? `<span class="badge warn">${tr('lblSkipped')}</span>` : ''}
+        ${lowStock ? `<span class="badge danger">${tr('lblRefillSoon').replace('{n}', m.stock)}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sm" onclick="logDose('${m.id}','taken')">${tr('btnTake')}</button>
+        <button class="btn sec sm" onclick="logDose('${m.id}','skipped')">${tr('btnSkip')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderMeds() {
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  document.getElementById('medLimitText').textContent = hasProAccess() ? 'Unlimited (Pro)' : `${profMeds.length}/${FREE_MAX_MEDS} Free`;
+  const list = document.getElementById('medsList');
+  if (!profMeds.length) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:13px;margin:0">Tap a preset above or + Custom to add a medicine.</p>`;
+    return;
+  }
+  list.innerHTML = profMeds.map(m => `
+    <div class="med-item">
+      <div class="med-info">
+        <h4>${esc(m.name)}</h4>
+        <p>${m.slot} (${m.time}) • ${tr('lblStock')}: <b>${m.stock}</b></p>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn sm" onclick="openRefillModal('${m.id}')">${tr('btnRefill')}</button>
+        <button class="btn danger sm" onclick="deleteMed('${m.id}')">${tr('btnRemove')}</button>
+      </div>
+    </div>`).join('');
+}
+
+function toggleVitalInputs() {
+  const t = document.getElementById('vitalType').value;
+  document.getElementById('bpInputs').style.display = t === 'bp' ? 'grid' : 'none';
+  document.getElementById('singleVitalWrap').style.display = t === 'bp' ? 'none' : 'block';
+  document.getElementById('vitalContextWrap').style.display = t === 'sugar' ? 'block' : 'none';
+  document.getElementById('singleVitalLabel').textContent = t === 'sugar' ? 'Sugar (mg/dL)' : 'Weight (kg)';
+}
+
+function saveVital() {
+  const type = document.getElementById('vitalType').value;
+  let v1 = 0, v2 = 0, context = '';
+  if (type === 'bp') {
+    v1 = parseInt(document.getElementById('bpSys').value, 10);
+    v2 = parseInt(document.getElementById('bpDia').value, 10);
+    if (!v1 || !v2) return showToast('Enter BP values');
+  } else {
+    v1 = parseFloat(document.getElementById('singleVitalVal').value);
+    if (!v1) return showToast('Enter reading value');
+    if (type === 'sugar') context = document.getElementById('vitalContext').value;
+  }
+  db.vitals.unshift({ id: 'v_' + Date.now(), profileId: db.activeProfileId, type, v1, v2, context, ts: Date.now() });
+  saveDB();
+  document.getElementById('bpSys').value = '';
+  document.getElementById('bpDia').value = '';
+  document.getElementById('singleVitalVal').value = '';
+  renderVitals();
+  showToast('Vital reading saved');
+}
+
+function renderVitalsChart(items) {
+  const chartEl = document.getElementById('vitalsChart');
+  const pts = items.slice(0, 10).reverse();
+  if (pts.length < 2) {
+    chartEl.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:6px 0">Add 2+ readings to view trend chart</div>`;
+    return;
+  }
+  const vals = pts.map(p => p.v1);
+  const min = Math.min(...vals) - 10;
+  const max = Math.max(...vals) + 10;
+  const W = 320, H = 90, pad = 12;
+  const coords = pts.map((p, i) => {
+    const x = pad + (i / (pts.length - 1)) * (W - 2 * pad);
+    const y = H - pad - ((p.v1 - min) / (max - min || 1)) * (H - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const circles = pts.map((p, i) => {
+    const [x, y] = coords[i].split(',');
+    return `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--accent)" /><text x="${x}" y="${Math.max(10, y - 6)}" text-anchor="middle" font-size="9" fill="var(--muted)">${p.v1}</text>`;
+  }).join('');
+  chartEl.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:96px;background:var(--surface-2);border-radius:12px;border:1px solid var(--border)">
+    <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${coords.join(' ')}" />
+    ${circles}
+  </svg>`;
+}
+
+function renderVitals() {
+  const cutoff = hasProAccess() ? 90 : 7;
+  const minTs = Date.now() - cutoff * 86400000;
+  const items = db.vitals.filter(v => v.profileId === db.activeProfileId && v.ts >= minTs);
+  const list = document.getElementById('vitalsList');
+  if (!items.length) {
+    document.getElementById('vitalsChart').innerHTML = '';
+    list.innerHTML = `<p style="color:var(--muted);font-size:13px;margin:0">No readings logged yet.</p>`;
+    return;
+  }
+  renderVitalsChart(items);
+  list.innerHTML = items.slice(0, 15).map(v => {
+    const dt = new Date(v.ts).toLocaleDateString();
+    const label = v.type === 'bp' ? `BP: ${v.v1}/${v.v2} mmHg` : v.type === 'sugar' ? `Sugar (${v.context}): ${v.v1} mg/dL` : `Weight: ${v.v1} kg`;
+    let badge = '<span class="badge ok">Normal</span>';
+    if (v.type === 'bp' && (v.v1 >= 140 || v.v2 >= 90)) badge = '<span class="badge danger">High</span>';
+    else if (v.type === 'bp' && (v.v1 >= 125 || v.v2 >= 82)) badge = '<span class="badge warn">Elevated</span>';
+    if (v.type === 'sugar' && v.v1 >= 180) badge = '<span class="badge danger">High</span>';
+    return `<div class="med-item"><div class="med-info"><h4>${label}</h4><p>${dt}</p>${badge}</div></div>`;
+  }).join('');
+}
+
+function buildSimplePdfBlob(lines) {
+  const escPdf = s => String(s).replace(/[()\\]/g, '\\$&').replace(/[^\x20-\x7E]/g, ' ');
+  let stream = 'BT\n/F1 14 Tf\n50 780 Td\n(' + escPdf(lines[0] || 'CareVault Report') + ') Tj\n/F1 10 Tf\n0 -22 Td\n';
+  for (let i = 1; i < lines.length; i++) {
+    stream += '(' + escPdf(lines[i]) + ') Tj\n0 -16 Td\n';
+  }
+  stream += 'ET';
+  const objs = [
+    '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n',
+    '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n',
+    '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n',
+    `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n'
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objs.forEach(o => { offsets.push(pdf.length); pdf += o; });
+  const xrefPos = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objs.length; i++) {
+    pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  }
+  pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+  return new Blob([pdf], { type: 'application/pdf' });
+}
+
+function downloadDoctorPdf() {
+  const prof = db.profiles.find(p => p.id === db.activeProfileId) || { name: 'Self' };
+  const meds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const vitals = db.vitals.filter(v => v.profileId === db.activeProfileId).slice(0, 12);
+  const lines = [
+    `CareVault Doctor Visit Summary - ${prof.name}`,
+    `Generated: ${new Date().toLocaleDateString()} | Blood: ${prof.blood || '-'} | Allergies: ${prof.allergies || 'None'}`,
+    '----------------------------------------------------------------',
+    `ACTIVE MEDICINES (${meds.length}):`
+  ];
+  if (meds.length) {
+    meds.forEach((m, i) => lines.push(`${i + 1}. ${m.name} | ${m.slot} ${m.time} | ${m.note} | Stock: ${m.stock}`));
+  } else {
+    lines.push('No active medicines logged.');
+  }
+  lines.push('----------------------------------------------------------------');
+  lines.push(`RECENT VITALS (${vitals.length}):`);
+  if (vitals.length) {
+    vitals.forEach(v => {
+      const d = new Date(v.ts).toLocaleDateString();
+      const val = v.type === 'bp' ? `BP ${v.v1}/${v.v2} mmHg` : v.type === 'sugar' ? `Sugar (${v.context}) ${v.v1} mg/dL` : `Weight ${v.v1} kg`;
+      lines.push(`- ${d}: ${val}`);
+    });
+  } else {
+    lines.push('No vitals logged.');
+  }
+  const blob = buildSimplePdfBlob(lines);
+  const fileName = `CareVault-Report-${(prof.name || 'Family').replace(/\s+/g, '_')}.pdf`;
+  window._lastReportText = lines.join('\n');
+  try {
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'CareVault Doctor Report' }).catch(() => {});
+    }
+  } catch (e) {}
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (e) {}
+  const reader = new FileReader();
+  reader.onload = () => {
+    const linkEl = document.getElementById('directPdfLink');
+    if (linkEl) linkEl.href = reader.result;
+  };
+  reader.readAsDataURL(blob);
+  showToast('Report ready! Tap Save/Share or Copy');
+}
+function copyDoctorSummary() {
+  if (!window._lastReportText) return;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(window._lastReportText).then(() => showToast('Summary Copied!')).catch(() => showToast('Copy ready in APK/Browser'));
+  }
+}
+
+function generateDoctorReport() {
+  if (!hasProAccess()) {
+    showToast('Doctor PDF Report requires Pro');
+    switchTab('settings');
+    return;
+  }
+  const prof = db.profiles.find(p => p.id === db.activeProfileId) || { name: 'Self' };
+  const meds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const vitals = db.vitals.filter(v => v.profileId === db.activeProfileId).slice(0, 10);
+  document.getElementById('reportPreview').innerHTML = `
+    <div style="background:var(--surface-2);padding:12px;border-radius:12px;font-size:12px;border:1px solid var(--border)">
+      <h4 style="margin:0 0 6px;color:var(--accent)">CareVault Visit Summary — ${esc(prof.name)}</h4>
+      <p style="margin:0 0 6px">Blood: ${esc(prof.blood || '-')} | Allergies: ${esc(prof.allergies || 'None')}</p>
+      <b>Active Medicines (${meds.length}):</b>
+      <ul style="margin:4px 0 8px;padding-left:18px">${meds.map(m => `<li>${esc(m.name)} (${m.slot} ${m.time}, ${m.note})</li>`).join('') || '<li>None</li>'}</ul>
+      <b>Recent Vitals:</b>
+      <ul style="margin:4px 0 8px;padding-left:18px">${vitals.map(v => `<li>${new Date(v.ts).toLocaleDateString()} — ${v.type.toUpperCase()}: ${v.v1}${v.v2 ? '/' + v.v2 : ''}</li>`).join('') || '<li>None</li>'}</ul>
+      <div class="row-2 no-print">
+        <a id="directPdfLink" class="btn sm" style="text-align:center;text-decoration:none" download="CareVault-Report.pdf" href="#">Save / Share PDF</a>
+        <button class="btn sec sm" onclick="copyDoctorSummary()">Copy Summary</button>
+      </div>
+    </div>`;
+  downloadDoctorPdf();
+}
+
+function loadEmergencyCard() {
+  const p = db.profiles.find(x => x.id === db.activeProfileId) || {};
+  document.getElementById('emBlood').value = p.blood || '';
+  document.getElementById('emPhone').value = p.phone || '';
+  document.getElementById('emAllergies').value = p.allergies || '';
+}
+
+function saveEmergencyCard() {
+  const p = db.profiles.find(x => x.id === db.activeProfileId);
+  if (!p) return;
+  p.blood = document.getElementById('emBlood').value.trim();
+  p.phone = document.getElementById('emPhone').value.trim();
+  p.allergies = document.getElementById('emAllergies').value.trim();
+  saveDB();
+  showToast('Emergency card saved');
+}
+
+function exportBackup() {
+  if (!hasProAccess()) { showToast('JSON Backup requires Pro'); switchTab('settings'); return; }
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `carevault-backup-${todayKey()}.json`;
+  a.click();
+}
+
+function importBackup(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const parsed = JSON.parse(r.result);
+      if (parsed && parsed.profiles) {
+        db = parsed; saveDB(); renderAll(); showToast('Backup restored');
+      }
+    } catch (err) { showToast('Invalid backup file'); }
+  };
+  r.readAsText(file);
+}
+
+function renderPlanStatus() {
+  const badge = document.getElementById('planBadge');
+  const desc = document.getElementById('proStatusDesc');
+  if (db.isPro) {
+    badge.textContent = 'PRO ACTIVE';
+    badge.className = 'trial-pill pro';
+    desc.textContent = 'CareVault Pro is active. Unlimited family profiles, refill alerts, and PDF reports unlocked.';
+    document.getElementById('proButtons').style.display = 'none';
+  } else {
+    const rem = Math.max(0, TRIAL_DAYS - daysUsed());
+    if (rem > 0) {
+      badge.textContent = `${rem}d Trial`;
+      badge.className = 'trial-pill';
+      desc.textContent = `${rem} days left in your full Pro trial. Upgrade anytime to keep unlimited family profiles and PDF reports.`;
+    } else {
+      badge.textContent = 'FREE TIER';
+      badge.className = 'trial-pill free';
+      desc.textContent = 'Your 14-day trial ended. Free tier supports 1 profile and 3 medicines. Unlock Pro for unlimited access.';
+    }
+  }
+}
+
+function initBilling() {
+  if (!window.CdvPurchase || !window.CdvPurchase.store) return;
+  const store = window.CdvPurchase.store;
+  const { ProductType, Platform } = window.CdvPurchase;
+  store.register([
+    { id: 'carevault_pro_monthly', type: ProductType.PAID_SUBSCRIPTION, platform: Platform.GOOGLE_PLAY },
+    { id: 'carevault_pro_yearly', type: ProductType.PAID_SUBSCRIPTION, platform: Platform.GOOGLE_PLAY },
+    { id: 'carevault_pro_lifetime', type: ProductType.NON_CONSUMABLE, platform: Platform.GOOGLE_PLAY }
+  ]);
+  store.when().approved(tx => tx.verify()).verified(tx => {
+    db.isPro = true; saveDB(); tx.finish(); renderAll(); showToast('CareVault Pro Unlocked!');
+  });
+  store.initialize([Platform.GOOGLE_PLAY]);
+}
+
+function buyPlan(productId) {
+  if (window.CdvPurchase && window.CdvPurchase.store) {
+    const offer = window.CdvPurchase.store.get(productId)?.getOffer();
+    if (offer) { offer.order(); return; }
+  }
+  showToast('Google Play Billing connects on Play Store build');
+}
+
+function restorePurchases() {
+  if (window.CdvPurchase && window.CdvPurchase.store) {
+    window.CdvPurchase.store.restorePurchases();
+    showToast('Checking Play Store purchases...');
+  } else {
+    showToast('Available on Android Play Store build');
+  }
+}
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderAll() {
+  applyTheme();
+  applyLanguage();
+  renderProfiles();
+  renderPlanStatus();
+  renderToday();
+  renderMeds();
+  renderVitals();
+  loadEmergencyCard();
+  const vt = document.getElementById('voiceToggle');
+  if (vt) vt.checked = (db.voiceEnabled !== false);
+}
+
+document.addEventListener('deviceready', () => { initBilling(); setupNotificationChannel(); }, false);
+let _firedAlarms = {};
+let _ringingMedId = null;
+let _alarmLoop = null;
+let _alarmCount = 0;
+
+function showAlarmModal(med, who, msg) {
+  _ringingMedId = med ? med.id : null;
+  document.getElementById('alarmModalTitle').textContent = `CareVault Alarm (${who})`;
+  document.getElementById('alarmModalBody').textContent = msg;
+  const am = document.getElementById('alarmModal'); am.classList.add('open'); am.style.display = 'flex';
+}
+let _snoozeTimers = {};
+function stopAlarmOnly() {
+  clearInterval(_alarmLoop);
+  clearTimeout(_voiceTimeout);
+  _alarmLoop = null;
+  _voiceTimeout = null;
+  const am = document.getElementById('alarmModal');
+  if (am) { am.classList.remove('open'); am.style.display = 'none'; }
+  try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {}
+}
+function snoozeAlarm5m() {
+  const id = _ringingMedId;
+  stopAlarmOnly();
+  if (!id) return;
+  const med = db.meds.find(m => m.id === id);
+  if (!med) return;
+  showToast('Snoozed! Will remind again in 5 min');
+  clearTimeout(_snoozeTimers[id]);
+  _snoozeTimers[id] = setTimeout(() => {
+    const dayLog = db.logs[todayKey()] || {};
+    if (dayLog[id] !== 'taken' && dayLog[id] !== 'skipped') {
+      const prof = db.profiles.find(p => p.id === med.profileId);
+      const who = prof ? prof.name : 'Family';
+      startContinuousAlarm(med, who, `Reminder: ${who} - ${med.name} (${med.note})`);
+    }
+  }, 5 * 60 * 1000);
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (LN) {
+      const prof = db.profiles.find(p => p.id === med.profileId);
+      const who = prof ? prof.name : 'Family';
+      LN.schedule({
+        notifications: [{
+          id: Math.floor(Math.random() * 100000),
+          title: `CareVault Snooze (${who})`,
+          body: `Still pending: ${med.name} (${med.note})`,
+          channelId: 'carevault_alarm_ch',
+          schedule: { at: new Date(Date.now() + 5 * 60 * 1000), allowWhileIdle: true }
+        }]
+      });
+    }
+  } catch (e) {}
+}
+function stopAlarmAndTake() {
+  const id = _ringingMedId;
+  _ringingMedId = null;
+  stopAlarmOnly();
+  if (id) logDose(id, 'taken');
+}
+function startContinuousAlarm(med, who, msg) {
+  clearInterval(_alarmLoop);
+  clearTimeout(_voiceTimeout);
+  _alarmCount = 0;
+  showAlarmModal(med, who, msg);
+  playAlarmTone();
+  _alarmLoop = setInterval(() => {
+    _alarmCount += 1;
+    if (_alarmCount >= 15) { stopAlarmOnly(); return; }
+    playAlarmTone();
+  }, 2000);
+  try {
+    const TTS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech;
+    if (TTS && db.voiceEnabled !== false) {
+      const langTag = (I18N[db.lang] || I18N.en).tts;
+      TTS.speak({ text: `CareVault Alarm. ${msg}`, lang: langTag, rate: 0.95, pitch: 1.0, volume: 1.0 });
+    }
+  } catch (e) {}
+}
+function checkDueAlarms() {
+  if (_alarmLoop) return;
+  const now = new Date();
+  const hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  const k = todayKey();
+  const dayLog = db.logs[k] || {};
+  db.meds.forEach(m => {
+    const fireKey = `${k}_${m.id}_${hhmm}`;
+    if (m.time === hhmm && dayLog[m.id] !== 'taken' && !_firedAlarms[fireKey]) {
+      _firedAlarms[fireKey] = true;
+      const prof = db.profiles.find(p => p.id === m.profileId);
+      const who = prof ? prof.name : 'Family';
+      const msg = `Time for ${who}: ${m.name} (${m.note})`;
+      startContinuousAlarm(m, who, msg);
+    }
+  });
+}
+setInterval(checkDueAlarms, 3000);
+if ('serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.register('./sw.js').catch(() => {});
+renderAll();
+</script>
+</body>
+</html>
