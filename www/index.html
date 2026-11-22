@@ -1254,14 +1254,13 @@ async function setupNotificationChannel() {
     if (!LN) return;
     await LN.requestPermissions();
     await LN.createChannel({
-      id: 'carevault_alarm_v3',
+      id: 'carevault_alarm_v2',
       name: 'CareVault Loud Alarms',
-      description: 'Loud medicine alarm reminders even when app is closed',
+      description: '10-second loud medicine alarm reminders',
       importance: 5,
       visibility: 1,
-      sound: 'alarm_ring.wav',
-      vibration: true,
-      lights: true
+      sound: 'carevault_alarm.wav',
+      vibration: true
     });
     await LN.registerActionTypes({
       types: [{
@@ -1394,21 +1393,23 @@ async function scheduleMedNotification(med) {
     await LN.requestPermissions();
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
-    const nid = med.notifId || (med.notifId = getNotifId(med.id));
-    saveDB();
-    try { await LN.cancel({ notifications: [{ id: nid }] }); } catch (e) {}
     const [hh, mm] = med.time.split(':').map(Number);
-    await LN.schedule({
-      notifications: [{
-        id: (med.notifId || (med.notifId = getNotifId(med.id))),
-        title: `💊 ${med.name} (${med.time})`,
-        body: `${who} • ${med.note} • Time to take your medicine`,
-        channelId: 'carevault_alarm_v3',
-        sound: 'alarm_ring',
-        sound: 'alarm_ring.wav',
-        schedule: { at: getNextExactDate(med.time), allowWhileIdle: true }
-      }]
+    const baseId = Math.abs(parseInt(String(med.id).replace(/\D/g, '').slice(-6) || '1000', 10)) * 10;
+    const offsets = [0, 5, 10];
+    const notifs = offsets.map((off, idx) => {
+      const totalMins = hh * 60 + mm + off;
+      const nh = Math.floor(totalMins / 60) % 24;
+      const nm = totalMins % 60;
+      return {
+        id: baseId + idx,
+        title: off === 0 ? `CareVault Alarm (${who})` : `Missed Dose Reminder (${who})`,
+        body: `Time for ${who}: ${med.name}, ${med.note}`,
+        channelId: 'carevault_alarm_v2',
+        sound: 'carevault_alarm.wav',
+        schedule: { on: { hour: nh, minute: nm }, repeats: true, allowWhileIdle: true }
+      };
     });
+    await LN.schedule({ notifications: notifs });
   } catch (e) {}
 }
 
