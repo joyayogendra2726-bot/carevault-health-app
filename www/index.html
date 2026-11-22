@@ -1012,13 +1012,14 @@ async function setupNotificationChannel() {
       description: 'High-priority medicine alarm reminders',
       importance: 5,
       visibility: 1,
+      sound: 'alarm_ring.wav',
       vibration: true
     });
     LN.addListener('localNotificationReceived', (notif) => {
-      triggerAlarmAndVoice(notif.body || 'Time for your medicine');
+      startContinuousAlarm(null, 'CareVault', notif.body || 'Time for your medicine');
     });
     LN.addListener('localNotificationActionPerformed', (act) => {
-      triggerAlarmAndVoice(act.notification?.body || 'Time for your medicine');
+      startContinuousAlarm(null, 'CareVault', act.notification?.body || 'Time for your medicine');
     });
   } catch (e) {}
 }
@@ -1121,6 +1122,7 @@ async function scheduleMedNotification(med) {
         title: `CareVault Alarm (${who})`,
         body: `Time for ${who}: ${med.name}, ${med.note}`,
         channelId: 'carevault_alarm_ch',
+        sound: 'alarm_ring.wav',
         schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
       }]
     });
