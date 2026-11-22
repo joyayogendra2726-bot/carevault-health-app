@@ -1,0 +1,14 @@
+{
+  "appId": "com.carevault.medtracker",
+  "appName": "CareVault: Family Meds",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_launcher",
+      "iconColor": "#14B8A6"
+    }
+  }
+}
