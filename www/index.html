@@ -211,7 +211,7 @@
     .modal-backdrop.open { display: flex; }
     .modal-sheet {
       width: 100%; max-width: 540px; max-height: 88vh; overflow-y: auto;
-      background: var(--surface); border-radius: 20px 20px 0 0; padding: 18px 16px 28px;
+      background: var(--surface); border-radius: 20px 20px 0 0; padding: 18px 16px calc(max(var(--safe-bottom), 46px) + 22px);
       border-top: 1px solid var(--border);
     }
     .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -273,10 +273,10 @@
         <button id="btnCustom" class="btn sm" onclick="openMedModal()">+ Custom</button>
       </div>
       <div class="preset-grid">
-        <button class="preset-btn" onclick="openMedModal('BP Tablet (Amlodipine)', 'Morning', '08:00', 30)">BP Tablet<span>Morning • 30 tabs</span></button>
-        <button class="preset-btn" onclick="openMedModal('Diabetes (Metformin)', 'Morning', '08:30', 30)">Sugar / Metformin<span>After Breakfast</span></button>
-        <button class="preset-btn" onclick="openMedModal('Thyroid Tablet', 'Morning', '07:00', 30)">Thyroid<span>Empty Stomach</span></button>
-        <button class="preset-btn" onclick="openMedModal('Vitamin D3 / B12', 'Afternoon', '13:30', 15)">Vitamin / Supplement<span>After Lunch</span></button>
+        <button class="preset-btn" onclick="openMedModal('BP Tablet (Amlodipine)', 'Morning', '08:00', 30)"><b id="preBP">BP Tablet</b><span id="preBPSub">Morning • 30 tabs</span></button>
+        <button class="preset-btn" onclick="openMedModal('Diabetes (Metformin)', 'Morning', '08:30', 30)"><b id="preSugar">Sugar / Metformin</b><span id="preSugarSub">After Breakfast</span></button>
+        <button class="preset-btn" onclick="openMedModal('Thyroid Tablet', 'Morning', '07:00', 30)"><b id="preThyroid">Thyroid</b><span id="preThyroidSub">Empty Stomach</span></button>
+        <button class="preset-btn" onclick="openMedModal('Vitamin D3 / B12', 'Afternoon', '13:30', 15)"><b id="preVit">Vitamin / Supplement</b><span id="preVitSub">After Lunch</span></button>
       </div>
     </div>
     <div class="card">
@@ -291,7 +291,7 @@
       <div class="card-title"><span id="lblLogVitals">Log Vitals</span></div>
       <div class="row-2">
         <div>
-          <label>Type</label>
+          <label id="lblVitalType">Type</label>
           <select id="vitalType" onchange="toggleVitalInputs()">
             <option value="bp">Blood Pressure (BP)</option>
             <option value="sugar">Blood Sugar (mg/dL)</option>
@@ -299,7 +299,7 @@
           </select>
         </div>
         <div id="vitalContextWrap" style="display:none">
-          <label>Timing</label>
+          <label id="lblVitalTiming">Timing</label>
           <select id="vitalContext">
             <option value="Fasting">Fasting</option>
             <option value="PP">After Meal (PP)</option>
@@ -308,8 +308,8 @@
         </div>
       </div>
       <div id="bpInputs" class="row-2">
-        <div><label>Systolic (Upper)</label><input type="number" id="bpSys" placeholder="120" /></div>
-        <div><label>Diastolic (Lower)</label><input type="number" id="bpDia" placeholder="80" /></div>
+        <div><label id="lblSys">Systolic (Upper)</label><input type="number" id="bpSys" placeholder="120" /></div>
+        <div><label id="lblDia">Diastolic (Lower)</label><input type="number" id="bpDia" placeholder="80" /></div>
       </div>
       <div id="singleVitalWrap" style="display:none">
         <label id="singleVitalLabel">Value</label>
@@ -337,18 +337,18 @@
     <div class="card">
       <div class="card-title"><span id="lblEmergency">Emergency Health Card</span></div>
       <div class="row-2">
-        <div><label>Blood Group</label><input id="emBlood" placeholder="O+" /></div>
-        <div><label>Emergency Contact</label><input id="emPhone" placeholder="+91 98..." /></div>
+        <div><label id="lblBlood">Blood Group</label><input id="emBlood" placeholder="O+" /></div>
+        <div><label id="lblEmPhone">Emergency Contact</label><input id="emPhone" placeholder="+91 98..." /></div>
       </div>
-      <label>Allergies / Conditions</label>
+      <label id="lblAllergies">Allergies / Conditions</label>
       <input id="emAllergies" placeholder="Penicillin, Dust, Diabetes" />
       <button id="lblSaveEm" class="btn sec full" onclick="saveEmergencyCard()">Save Emergency Card</button>
     </div>
 
     <div class="card">
-      <div class="card-title"><span>Offline Vault Backup</span></div>
+      <div class="card-title"><span id="lblBackupTitle">Offline Vault Backup</span></div>
       <div class="row-2">
-        <button class="btn sec" onclick="exportBackup()">Export JSON</button>
+        <button class="btn sec" id="btnExport" onclick="exportBackup()">Export JSON</button>
         <label class="btn sec" style="text-align:center;margin:0;cursor:pointer">Restore JSON<input type="file" accept=".json" style="display:none" onchange="importBackup(event)" /></label>
       </div>
     </div>
@@ -385,7 +385,7 @@
         <span style="font-size:13px">Speak Medicine Name &amp; Loud Alarm</span>
         <input type="checkbox" id="voiceToggle" checked onchange="toggleVoice(this.checked)" style="width:20px;height:20px;margin:0" />
       </div>
-      <button class="btn sec full" onclick="testAlarmAndVoice()" style="margin-bottom:8px">Test Loud Alarm &amp; Voice Now</button>
+      <button class="btn sec full" id="btnTestAlarm" onclick="testAlarmAndVoice()" style="margin-bottom:8px">Test Loud Alarm &amp; Voice Now</button>
       <div id="exactAlarmStatus" style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.4"></div>
       <div class="row-2" style="margin-top:8px">
         <button class="btn sm" onclick="openExactAlarmSettings()">Allow Exact Alarm</button>
@@ -432,20 +432,20 @@
 <!-- ADD MED MODAL -->
 <div id="medModal" class="modal-backdrop">
   <div class="modal-sheet">
-    <div class="card-title"><span id="lblAddMed">Add Medicine</span><button class="btn sec sm" onclick="closeMedModal()">Close</button></div>
-    <label>Medicine Name</label>
+    <div class="card-title"><span id="lblAddMed">Add Medicine</span><button id="btnCloseMed" class="btn sec sm" onclick="closeMedModal()">Close</button></div>
+    <label id="lblMedName">Medicine Name</label>
     <input id="mName" placeholder="e.g., Metformin 500mg" />
     <div class="row-2">
       <div>
-        <label>Slot</label>
+        <label id="lblSlot">Slot</label>
         <select id="mSlot" onchange="onSlotChange()">
-          <option value="Morning">Morning (4AM–12PM)</option>
-          <option value="Afternoon">Afternoon (12PM–5PM)</option>
-          <option value="Night">Night (5PM–4AM)</option>
+          <option id="optMorning" value="Morning">Morning (4AM–12PM)</option>
+          <option id="optAfternoon" value="Afternoon">Afternoon (12PM–5PM)</option>
+          <option id="optNight" value="Night">Night (5PM–4AM)</option>
         </select>
       </div>
       <div>
-        <label>Period (AM / PM)</label>
+        <label id="lblPeriod">Period (AM / PM)</label>
         <div class="ampm-wrap">
           <button type="button" id="btnAM" class="ampm-btn active-am" onclick="setPeriod('AM')">☀️ AM</button>
           <button type="button" id="btnPM" class="ampm-btn" onclick="setPeriod('PM')">🌙 PM</button>
@@ -454,24 +454,24 @@
     </div>
     <div class="row-2">
       <div>
-        <label>Hour (1–12)</label>
+        <label id="lblHour">Hour (1–12)</label>
         <select id="mHour"></select>
       </div>
       <div>
-        <label>Minute (00–59)</label>
+        <label id="lblMin">Minute (00–59)</label>
         <select id="mMin"></select>
       </div>
     </div>
     <div id="slotWarnBox" class="slot-warn"></div>
     <div class="row-2">
-      <div><label>Pill Stock (Qty)</label><input type="number" id="mStock" value="30" /></div>
+      <div><label id="lblPillStock">Pill Stock (Qty)</label><input type="number" id="mStock" value="30" /></div>
       <div>
-        <label>Instruction</label>
+        <label id="lblInstr">Instruction</label>
         <select id="mNote">
-          <option>After Meal</option>
-          <option>Before Meal</option>
-          <option>Empty Stomach</option>
-          <option>Bedtime</option>
+          <option id="optAfterMeal" value="After Meal">After Meal</option>
+          <option id="optBeforeMeal" value="Before Meal">Before Meal</option>
+          <option id="optEmpty" value="Empty Stomach">Empty Stomach</option>
+          <option id="optBedtime" value="Bedtime">Bedtime</option>
         </select>
       </div>
     </div>
@@ -499,7 +499,7 @@
 <div id="profModal" class="modal-backdrop">
   <div class="modal-sheet">
     <div class="card-title"><span id="lblAddMember">Add Family Member</span><button class="btn sec sm" onclick="closeProfModal()">Close</button></div>
-    <label>Name / Relation</label>
+    <label id="lblMemberName">Name / Relation</label>
     <input id="pName" placeholder="e.g., Dad, Mom, Spouse, Child" />
     <button class="btn full" id="lblAddProfile" onclick="saveProfile()">Add Profile</button>
   </div>
@@ -559,7 +559,43 @@ const I18N = {
     "lblSaveAlarm": "Save & Schedule Alarm",
     "lblAddMember": "Add Family Member",
     "lblAddProfile": "Add Profile",
-    "lblNoMeds": "No medicines added for this profile yet. Tap Meds below to add one."
+    "lblNoMeds": "No medicines added for this profile yet. Tap Meds below to add one.",
+    "btnClose": "Close",
+    "lblMedName": "Medicine Name",
+    "lblSlot": "Slot",
+    "lblPeriod": "Period (AM / PM)",
+    "lblHour": "Hour (1–12)",
+    "lblMin": "Minute (00–59)",
+    "lblPillStock": "Pill Stock (Qty)",
+    "lblInstr": "Instruction",
+    "optMorning": "Morning (4AM–12PM)",
+    "optAfternoon": "Afternoon (12PM–5PM)",
+    "optNight": "Night (5PM–4AM)",
+    "optAfterMeal": "After Meal",
+    "optBeforeMeal": "Before Meal",
+    "optEmpty": "Empty Stomach",
+    "optBedtime": "Bedtime",
+    "preBP": "BP Tablet",
+    "preBPSub": "Morning • 30 tabs",
+    "preSugar": "Sugar / Metformin",
+    "preSugarSub": "After Breakfast",
+    "preThyroid": "Thyroid",
+    "preThyroidSub": "Empty Stomach",
+    "preVit": "Vitamin / Supplement",
+    "preVitSub": "After Lunch",
+    "lblVitalType": "Type",
+    "lblVitalTiming": "Timing",
+    "lblSys": "Systolic (Upper)",
+    "lblDia": "Diastolic (Lower)",
+    "lblBlood": "Blood Group",
+    "lblEmPhone": "Emergency Contact",
+    "lblAllergies": "Allergies / Conditions",
+    "lblBackupTitle": "Offline Vault Backup",
+    "btnExport": "Export JSON",
+    "btnRestore": "Restore JSON",
+    "lblMemberName": "Name / Relation",
+    "btnTestAlarm": "Test Loud Alarm & Voice Now",
+    "notifBody": "Time for {who}: {med} ({note})"
   },
   "gu": {
     "tts": "gu-IN",
@@ -601,7 +637,43 @@ const I18N = {
     "lblSaveAlarm": "સેવ અને એલાર્મ સેટ કરો",
     "lblAddMember": "પરિવારના સભ્ય ઉમેરો",
     "lblAddProfile": "પ્રોફાઇલ ઉમેરો",
-    "lblNoMeds": "હજુ કોઈ દવા ઉમેરી નથી. નીચે 'દવાઓ' પર ટૅપ કરીને દવા ઉમેરો."
+    "lblNoMeds": "હજુ કોઈ દવા ઉમેરી નથી. નીચે 'દવાઓ' પર ટૅપ કરીને દવા ઉમેરો.",
+    "btnClose": "બંધ કરો",
+    "lblMedName": "દવાનું નામ",
+    "lblSlot": "સમય સ્લોટ",
+    "lblPeriod": "સમય (AM / PM)",
+    "lblHour": "કલાક (1–12)",
+    "lblMin": "મિનિટ (00–59)",
+    "lblPillStock": "દવાનો સ્ટોક (નંગ)",
+    "lblInstr": "સૂચના",
+    "optMorning": "સવાર (4AM–12PM)",
+    "optAfternoon": "બપોર (12PM–5PM)",
+    "optNight": "રાત્રે (5PM–4AM)",
+    "optAfterMeal": "જમ્યા પછી",
+    "optBeforeMeal": "જમ્યા પહેલા",
+    "optEmpty": "ખાલી પેટે",
+    "optBedtime": "સૂતા પહેલા",
+    "preBP": "બીપી ની ગોળી",
+    "preBPSub": "સવારે • ૩૦ ગોળી",
+    "preSugar": "શુગર / મેટફોર્મિન",
+    "preSugarSub": "નાસ્તા પછી",
+    "preThyroid": "થાઇરોઇડ",
+    "preThyroidSub": "ખાલી પેટે",
+    "preVit": "વિટામિન / સપ્લિમેન્ટ",
+    "preVitSub": "બપોરે જમ્યા પછી",
+    "lblVitalType": "પ્રકાર",
+    "lblVitalTiming": "સમય",
+    "lblSys": "ઉપરનું બીપી (Systolic)",
+    "lblDia": "નીચેનું બીપી (Diastolic)",
+    "lblBlood": "બ્લડ ગ્રુપ",
+    "lblEmPhone": "ઇમરજન્સી નંબર",
+    "lblAllergies": "એલર્જી / બીમારી",
+    "lblBackupTitle": "ઓફલાઇન વૉલ્ટ બેકઅપ",
+    "btnExport": "બેકઅપ સેવ કરો",
+    "btnRestore": "બેકઅપ પાછો લાવો",
+    "lblMemberName": "નામ / સંબંધ",
+    "btnTestAlarm": "લાઉડ એલાર્મ અને વોઇસ ટેસ્ટ કરો",
+    "notifBody": "{who} માટે દવાનો સમય: {med} ({note})"
   },
   "hi": {
     "tts": "hi-IN",
@@ -643,7 +715,43 @@ const I18N = {
     "lblSaveAlarm": "सेव और अलार्म सेट करें",
     "lblAddMember": "परिवार का सदस्य जोड़ें",
     "lblAddProfile": "प्रोफ़ाइल जोड़ें",
-    "lblNoMeds": "अभी कोई दवा नहीं जोड़ी गई है। दवा जोड़ने के लिए नीचे 'दवाएं' पर टैप करें।"
+    "lblNoMeds": "अभी कोई दवा नहीं जोड़ी गई है। दवा जोड़ने के लिए नीचे 'दवाएं' पर टैप करें।",
+    "btnClose": "बंद करें",
+    "lblMedName": "दवा का नाम",
+    "lblSlot": "समय स्लॉट",
+    "lblPeriod": "समय (AM / PM)",
+    "lblHour": "घंटा (1–12)",
+    "lblMin": "मिनट (00–59)",
+    "lblPillStock": "दवा स्टॉक (संख्या)",
+    "lblInstr": "निर्देश",
+    "optMorning": "सुबह (4AM–12PM)",
+    "optAfternoon": "दोपहर (12PM–5PM)",
+    "optNight": "रात (5PM–4AM)",
+    "optAfterMeal": "खाने के बाद",
+    "optBeforeMeal": "खाने से पहले",
+    "optEmpty": "खाली पेट",
+    "optBedtime": "सोने से पहले",
+    "preBP": "बीपी की गोली",
+    "preBPSub": "सुबह • 30 गोलियां",
+    "preSugar": "शुगर / मेटफॉर्मिन",
+    "preSugarSub": "नाश्ते के बाद",
+    "preThyroid": "थायरॉयड",
+    "preThyroidSub": "खाली पेट",
+    "preVit": "विटामिन / सप्लीमेंट",
+    "preVitSub": "दोपहर के बाद",
+    "lblVitalType": "प्रकार",
+    "lblVitalTiming": "समय",
+    "lblSys": "ऊपरी बीपी (Systolic)",
+    "lblDia": "निचला बीपी (Diastolic)",
+    "lblBlood": "ब्लड ग्रुप",
+    "lblEmPhone": "आपातकालीन नंबर",
+    "lblAllergies": "एलर्जी / बीमारी",
+    "lblBackupTitle": "ऑफ़लाइन वॉल्ट बैकअप",
+    "btnExport": "बैकअप सेव करें",
+    "btnRestore": "बैकअप रीस्टोर करें",
+    "lblMemberName": "नाम / रिश्ता",
+    "btnTestAlarm": "तेज़ अलार्म और आवाज़ टेस्ट करें",
+    "notifBody": "{who} की दवा का समय: {med} ({note})"
   },
   "es": {
     "tts": "es-ES",
@@ -685,7 +793,43 @@ const I18N = {
     "lblSaveAlarm": "Guardar y Programar Alarma",
     "lblAddMember": "Añadir Familiar",
     "lblAddProfile": "Añadir Perfil",
-    "lblNoMeds": "Sin medicinas aún. Toca Medicina abajo para añadir una."
+    "lblNoMeds": "Sin medicinas aún. Toca Medicina abajo para añadir una.",
+    "btnClose": "Cerrar",
+    "lblMedName": "Nombre de Medicina",
+    "lblSlot": "Horario",
+    "lblPeriod": "Período (AM / PM)",
+    "lblHour": "Hora (1–12)",
+    "lblMin": "Minuto (00–59)",
+    "lblPillStock": "Cantidad (Stock)",
+    "lblInstr": "Instrucción",
+    "optMorning": "Mañana (4AM–12PM)",
+    "optAfternoon": "Tarde (12PM–5PM)",
+    "optNight": "Noche (5PM–4AM)",
+    "optAfterMeal": "Después de comer",
+    "optBeforeMeal": "Antes de comer",
+    "optEmpty": "En ayunas",
+    "optBedtime": "Al dormir",
+    "preBP": "Pastilla Presión",
+    "preBPSub": "Mañana • 30 tabs",
+    "preSugar": "Diabetes / Metformina",
+    "preSugarSub": "Tras desayuno",
+    "preThyroid": "Tiroides",
+    "preThyroidSub": "En ayunas",
+    "preVit": "Vitaminas",
+    "preVitSub": "Tras almuerzo",
+    "lblVitalType": "Tipo",
+    "lblVitalTiming": "Momento",
+    "lblSys": "Sistólica",
+    "lblDia": "Diastólica",
+    "lblBlood": "Grupo Sanguíneo",
+    "lblEmPhone": "Contacto Emergencia",
+    "lblAllergies": "Alergias / Condiciones",
+    "lblBackupTitle": "Copia de Seguridad",
+    "btnExport": "Exportar JSON",
+    "btnRestore": "Restaurar JSON",
+    "lblMemberName": "Nombre / Relación",
+    "btnTestAlarm": "Probar Alarma y Voz",
+    "notifBody": "Hora de medicina para {who}: {med} ({note})"
   },
   "fr": {
     "tts": "fr-FR",
@@ -727,7 +871,43 @@ const I18N = {
     "lblSaveAlarm": "Enregistrer & Alarme",
     "lblAddMember": "Ajouter un Proche",
     "lblAddProfile": "Ajouter Profil",
-    "lblNoMeds": "Aucun médicament. Appuyez sur Médic. ci-dessous pour en ajouter."
+    "lblNoMeds": "Aucun médicament. Appuyez sur Médic. ci-dessous pour en ajouter.",
+    "btnClose": "Fermer",
+    "lblMedName": "Nom du Médicament",
+    "lblSlot": "Créneau",
+    "lblPeriod": "Période (AM / PM)",
+    "lblHour": "Heure (1–12)",
+    "lblMin": "Minute (00–59)",
+    "lblPillStock": "Stock (Qté)",
+    "lblInstr": "Instruction",
+    "optMorning": "Matin (4AM–12PM)",
+    "optAfternoon": "Après-midi (12PM–5PM)",
+    "optNight": "Nuit (5PM–4AM)",
+    "optAfterMeal": "Après repas",
+    "optBeforeMeal": "Avant repas",
+    "optEmpty": "À jeun",
+    "optBedtime": "Au coucher",
+    "preBP": "Tension (BP)",
+    "preBPSub": "Matin • 30 comp.",
+    "preSugar": "Diabète / Metformine",
+    "preSugarSub": "Après petit-déj.",
+    "preThyroid": "Thyroïde",
+    "preThyroidSub": "À jeun",
+    "preVit": "Vitamines",
+    "preVitSub": "Après déjeuner",
+    "lblVitalType": "Type",
+    "lblVitalTiming": "Moment",
+    "lblSys": "Systolique",
+    "lblDia": "Diastolique",
+    "lblBlood": "Groupe Sanguin",
+    "lblEmPhone": "Contact Urgence",
+    "lblAllergies": "Allergies / Notes",
+    "lblBackupTitle": "Sauvegarde Hors Ligne",
+    "btnExport": "Exporter JSON",
+    "btnRestore": "Restaurer JSON",
+    "lblMemberName": "Nom / Lien",
+    "btnTestAlarm": "Tester Alarme & Voix",
+    "notifBody": "Heure du médicament pour {who} : {med} ({note})"
   },
   "ar": {
     "tts": "ar-SA",
@@ -769,7 +949,43 @@ const I18N = {
     "lblSaveAlarm": "حفظ وضبط المنبه",
     "lblAddMember": "إضافة فرد عائلة",
     "lblAddProfile": "إضافة ملف",
-    "lblNoMeds": "لا توجد أدوية بعد. اضغط على الأدوية بالأسفل للإضافة."
+    "lblNoMeds": "لا توجد أدوية بعد. اضغط على الأدوية بالأسفل للإضافة.",
+    "btnClose": "إغلاق",
+    "lblMedName": "اسم الدواء",
+    "lblSlot": "الفترة",
+    "lblPeriod": "صباحاً / مساءً",
+    "lblHour": "الساعة (1–12)",
+    "lblMin": "الدقيقة (00–59)",
+    "lblPillStock": "المخزون (الكمية)",
+    "lblInstr": "التعليمات",
+    "optMorning": "صباحاً (4AM–12PM)",
+    "optAfternoon": "ظهراً (12PM–5PM)",
+    "optNight": "مساءً (5PM–4AM)",
+    "optAfterMeal": "بعد الأكل",
+    "optBeforeMeal": "قبل الأكل",
+    "optEmpty": "على الريق",
+    "optBedtime": "قبل النوم",
+    "preBP": "دواء الضغط",
+    "preBPSub": "صباحاً • 30 قرص",
+    "preSugar": "دواء السكري",
+    "preSugarSub": "بعد الفطور",
+    "preThyroid": "الغدة الدرقية",
+    "preThyroidSub": "على الريق",
+    "preVit": "فيتامينات",
+    "preVitSub": "بعد الغداء",
+    "lblVitalType": "النوع",
+    "lblVitalTiming": "التوقيت",
+    "lblSys": "الضغط العالي",
+    "lblDia": "الضغط المنخفض",
+    "lblBlood": "فصيلة الدم",
+    "lblEmPhone": "رقم الطوارئ",
+    "lblAllergies": "الحساسية / الحالات",
+    "lblBackupTitle": "نسخ احتياطي للبيانات",
+    "btnExport": "تصدير JSON",
+    "btnRestore": "استعادة JSON",
+    "lblMemberName": "الاسم / الصلة",
+    "btnTestAlarm": "اختبار المنبه والصوت",
+    "notifBody": "موعد دواء {who}: {med} ({note})"
   }
 };
 function tr(key) {
@@ -824,13 +1040,15 @@ function setLanguage(code) {
 function applyLanguage() {
   const t = I18N[db.lang] || I18N.en;
   document.documentElement.dir = t.dir;
-  const ids = ['brandSub','welcomeSub','todayGreeting','navToday','navMeds','navVitals','navVault','navPro','lblQuickPresets','lblActiveMeds','lblLogVitals','lblTrend','lblDocReport','lblEmergency','btnCustom','lblGenReport','lblSaveEm','lblLang','lblAlarmVoice','lblTheme','lblDisclaimer','lblAddMed','lblSaveAlarm','lblAddMember','lblAddProfile'];
+  const ids = ['brandSub','welcomeSub','todayGreeting','navToday','navMeds','navVitals','navVault','navPro','lblQuickPresets','lblActiveMeds','lblLogVitals','lblTrend','lblDocReport','lblEmergency','btnCustom','lblGenReport','lblSaveEm','lblLang','lblAlarmVoice','lblTheme','lblDisclaimer','lblAddMed','lblSaveAlarm','lblAddMember','lblAddProfile','preBP','preBPSub','preSugar','preSugarSub','preThyroid','preThyroidSub','preVit','preVitSub','lblVitalType','lblVitalTiming','lblSys','lblDia','lblBlood','lblEmPhone','lblAllergies','lblBackupTitle','btnExport','btnTestAlarm','lblMedName','lblSlot','optMorning','optAfternoon','optNight','lblPeriod','lblHour','lblMin','lblPillStock','lblInstr','optAfterMeal','optBeforeMeal','optEmpty','optBedtime','lblMemberName'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el && t[id]) el.textContent = t[id];
   });
   const bsv = document.getElementById('btnSaveVital');
   if (bsv && t.lblSaveReading) bsv.textContent = t.lblSaveReading;
+  const bcm = document.getElementById('btnCloseMed');
+  if (bcm && t.btnClose) bcm.textContent = t.btnClose;
   const wb = document.getElementById('welcomeStartBtn');
   if (wb) wb.textContent = t.welcomeBtn;
   const ls = document.getElementById('langSelect');
@@ -1041,6 +1259,7 @@ async function setupNotificationChannel() {
       description: 'Loud medicine alarm reminders',
       importance: 5,
       visibility: 1,
+      sound: 'alarm_ring',
       vibration: true,
       sound: 'carevault_alarm.wav'
     });
@@ -1184,7 +1403,8 @@ async function scheduleMedNotification(med) {
         id: (med.notifId || (med.notifId = getNotifId(med.id))),
         title: `💊 ${med.name} (${med.time})`,
         body: `${who} • ${med.note} • Time to take your medicine`,
-        channelId: 'carevault_alarm_ch',
+        channelId: 'carevault_alarm_v2',
+        sound: 'alarm_ring',
         sound: 'alarm_ring.wav',
         schedule: { at: getNextExactDate(med.time), allowWhileIdle: true }
       }]
