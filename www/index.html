@@ -1035,21 +1035,44 @@ async function setupNotificationChannel() {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
     await LN.requestPermissions();
-    await ensureExactAlarmPermission();
     await LN.createChannel({
-      id: 'carevault_alarm_ch',
-      name: 'Medicine Alarms',
-      description: 'High-priority medicine alarm reminders',
+      id: 'carevault_alarm_v2',
+      name: 'CareVault Loud Alarms',
+      description: 'Loud medicine alarm reminders',
       importance: 5,
       visibility: 1,
-      sound: 'alarm_ring.wav',
-      vibration: true
+      vibration: true,
+      sound: 'carevault_alarm.wav'
+    });
+    await LN.registerActionTypes({
+      types: [{
+        id: 'MED_REMINDER',
+        actions: [
+          { id: 'take', title: 'Take Now' },
+          { id: 'snooze', title: 'Snooze 5m' }
+        ]
+      }]
     });
     LN.addListener('localNotificationReceived', (notif) => {
-      startContinuousAlarm(null, 'CareVault', notif.body || 'Time for your medicine');
+      const medId = notif?.extra?.medId;
+      const med = medId ? db.meds.find(m => m.id === medId) : null;
+      const prof = med ? db.profiles.find(p => p.id === med.profileId) : null;
+      startContinuousAlarm(med, prof ? prof.name : 'Family', notif.body || 'Time for your medicine');
     });
     LN.addListener('localNotificationActionPerformed', (act) => {
-      startContinuousAlarm(null, 'CareVault', act.notification?.body || 'Time for your medicine');
+      const medId = act?.notification?.extra?.medId;
+      if (act.actionId === 'take' && medId) {
+        logDose(medId, 'taken');
+        return;
+      }
+      const med = medId ? db.meds.find(m => m.id === medId) : null;
+      if (act.actionId === 'snooze' && med) {
+        _ringingMedId = med.id;
+        snoozeAlarm5m();
+        return;
+      }
+      const prof = med ? db.profiles.find(p => p.id === med.profileId) : null;
+      startContinuousAlarm(med, prof ? prof.name : 'Family', act.notification?.body || 'Time for your medicine');
     });
   } catch (e) {}
 }
@@ -1634,7 +1657,10 @@ function snoozeAlarm5m() {
           id: Math.floor(Math.random() * 100000),
           title: `CareVault Snooze (${who})`,
           body: `Still pending: ${med.name} (${med.note})`,
-          channelId: 'carevault_alarm_ch',
+          channelId: 'carevault_alarm_v2',
+          sound: 'carevault_alarm.wav',
+          actionTypeId: 'MED_REMINDER',
+          extra: { medId: med.id },
           schedule: { at: new Date(Date.now() + 5 * 60 * 1000), allowWhileIdle: true }
         }]
       });
@@ -1667,21 +1693,27 @@ function startContinuousAlarm(med, who, msg) {
   } catch (e) {}
 }
 function checkDueAlarms() {
-  if (_alarmLoop) return;
+  if (_alarmLoop || document.getElementById('alarmModal').classList.contains('open')) return;
   const now = new Date();
-  const hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   const k = todayKey();
   const dayLog = db.logs[k] || {};
-  db.meds.forEach(m => {
-    const fireKey = `${k}_${m.id}_${hhmm}`;
-    if (m.time === hhmm && dayLog[m.id] !== 'taken' && !_firedAlarms[fireKey]) {
+  for (const m of db.meds) {
+    if (dayLog[m.id] === 'taken' || dayLog[m.id] === 'skipped') continue;
+    if (_snoozeTimers[m.id]) continue;
+    const [mh, mm] = (m.time || '08:00').split(':').map(Number);
+    const medMins = mh * 60 + mm;
+    const diff = nowMins - medMins;
+    const fireKey = `${k}_${m.id}_${m.time}`;
+    if (diff >= 0 && diff <= 120 && !_firedAlarms[fireKey]) {
       _firedAlarms[fireKey] = true;
       const prof = db.profiles.find(p => p.id === m.profileId);
       const who = prof ? prof.name : 'Family';
       const msg = `Time for ${who}: ${m.name} (${m.note})`;
       startContinuousAlarm(m, who, msg);
+      break;
     }
-  });
+  }
 }
 setInterval(checkDueAlarms, 3000);
 if ('serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.register('./sw.js').catch(() => {});
