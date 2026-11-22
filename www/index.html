@@ -1583,7 +1583,7 @@ function renderAll() {
   loadEmergencyCard();
   const vt = document.getElementById('voiceToggle');
   if (vt) vt.checked = (db.voiceEnabled !== false);
-  checkExactAlarmStatus();
+  
 }
 
 document.addEventListener('deviceready', () => { initBilling(); setupNotificationChannel(); }, false);
