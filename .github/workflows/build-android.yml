@@ -1,0 +1,118 @@
+name: Build CareVault Android AAB & APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add and sync Capacitor Android
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: Configure SDK versions (API 35 & minSdk 24)
+        run: |
+          cat << 'EOF' > android/variables.gradle
+          ext {
+              minSdkVersion = 24
+              compileSdkVersion = 35
+              targetSdkVersion = 35
+              androidxActivityVersion = '1.9.2'
+              androidxAppCompatVersion = '1.7.0'
+              androidxCoordinatorLayoutVersion = '1.2.0'
+              androidxCoreVersion = '1.15.0'
+              androidxFragmentVersion = '1.8.4'
+              coreSplashScreenVersion = '1.0.1'
+              androidxWebkitVersion = '1.12.1'
+              junitVersion = '4.13.2'
+              androidxJunitVersion = '1.2.1'
+              androidxEspressoCoreVersion = '3.6.1'
+              cordovaAndroidVersion = '13.0.0'
+          }
+          EOF
+
+      - name: Patch AndroidManifest.xml permissions
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+            sed -i 's/<uses-permission android:name="android.permission.INTERNET" \/>/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" \/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" \/>\n    <uses-permission android:name="com.android.vending.BILLING" \/>\n    <uses-permission android:name="android.permission.VIBRATE" \/>\n    <uses-permission android:name="android.permission.WAKE_LOCK" \/>/' "$MANIFEST"
+          fi
+
+      - name: Apply custom 512x512 app icon
+        run: |
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            mkdir -p "android/app/src/main/res/$dir"
+            cp www/assets/icon-512.png "android/app/src/main/res/$dir/ic_launcher.png"
+            cp www/assets/icon-512.png "android/app/src/main/res/$dir/ic_launcher_round.png"
+          done
+
+      - name: Prepare fixed signing keystore
+        run: |
+          if [ ! -f "release-key.jks" ]; then
+            keytool -genkeypair -v -keystore release-key.jks -alias carevault -keyalg RSA -keysize 2048 -validity 10000 -storepass CareVault2026! -keypass CareVault2026! -dname "CN=CareVault, OU=Mobile, O=CareVault, L=Ahmedabad, ST=Gujarat, C=IN"
+          fi
+          keytool -export -rfc -keystore release-key.jks -alias carevault -storepass CareVault2026! -file upload_certificate.pem
+          cp release-key.jks android/app/release-key.jks
+
+      - name: Configure Gradle signing
+        run: |
+          cat << 'EOF' >> android/app/build.gradle
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release-key.jks")
+                      storePassword "CareVault2026!"
+                      keyAlias "carevault"
+                      keyPassword "CareVault2026!"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          EOF
+
+      - name: Build Debug APK and Signed Release AAB
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          ./gradlew bundleRelease
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: carevault-android-builds
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+            upload_certificate.pem
