@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carevault-v1.1.0';
+const CACHE_NAME = 'carevault-v1.1.1';
 const ASSETS = ['./', './index.html', './manifest.json', './assets/icon-512.png', './assets/welcome-3d.png'];
 
 self.addEventListener('install', (e) => {
