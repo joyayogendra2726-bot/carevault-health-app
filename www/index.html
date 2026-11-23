@@ -1388,41 +1388,26 @@ async function scheduleMedNotification(med) {
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
     const [hh, mm] = med.time.split(':').map(Number);
-
-    let preM = mm - 5, preH = hh;
-    if (preM < 0) { preM += 60; preH = (preH + 23) % 24; }
-
-    let ovM = mm + 2, ovH = hh;
-    if (ovM >= 60) { ovM -= 60; ovH = (ovH + 1) % 24; }
-
-    const baseId = Math.floor(10000 + Math.random() * 80000);
-    med.notifIds = [baseId, baseId + 1, baseId + 2];
-    saveDB();
-
+    const target = new Date();
+    target.setHours(hh, mm, 0, 0);
+    if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
     await LN.schedule({
       notifications: [
         {
-          id: baseId,
-          title: `Upcoming in 5m (${who})`,
-          body: `Prepare ${med.name} (${med.note}) at ${med.time}`,
-          channelId: 'carevault_pre_v2',
-          schedule: { on: { hour: preH, minute: preM }, repeats: true, allowWhileIdle: true }
+          id: Math.floor(Math.random() * 100000),
+          title: `CareVault Alarm (${who})`,
+          body: `Time for ${who}: ${med.name}, ${med.note}`,
+          channelId: 'carevault_alarm_v3',
+          sound: 'carevault_alarm.wav',
+          schedule: { at: target, allowWhileIdle: true }
         },
         {
-          id: baseId + 1,
-          title: `ALARM: ${med.name} (${who})`,
-          body: `Time NOW for ${who}: ${med.name}, ${med.note}`,
-          channelId: 'carevault_alarm_v2',
-          sound: 'alarm_chime',
-          schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
-        },
-        {
-          id: baseId + 2,
-          title: `OVERDUE ALARM: ${med.name}`,
-          body: `Still pending for ${who}: ${med.name} (${med.note})`,
-          channelId: 'carevault_alarm_v2',
-          sound: 'alarm_chime',
-          schedule: { on: { hour: ovH, minute: ovM }, repeats: true, allowWhileIdle: true }
+          id: Math.floor(Math.random() * 100000) + 100000,
+          title: `Overdue Alarm (${who})`,
+          body: `Still pending: ${med.name} (${med.note})`,
+          channelId: 'carevault_alarm_v3',
+          sound: 'carevault_alarm.wav',
+          schedule: { at: new Date(target.getTime() + 5 * 60 * 1000), allowWhileIdle: true }
         }
       ]
     });
