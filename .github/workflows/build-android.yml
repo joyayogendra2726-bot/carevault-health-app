@@ -86,6 +86,11 @@ jobs:
               f.write(s)
           PYEOF
 
+      - name: Bundle loud alarm sound in Android res/raw
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          [ -f "www/assets/alarm_ring.wav" ] && cp www/assets/alarm_ring.wav android/app/src/main/res/raw/alarm_ring.wav || true
+
       - name: Apply custom 512x512 app icon
         run: |
           rm -rf android/app/src/main/res/mipmap-anydpi-v26
