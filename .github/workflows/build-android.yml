@@ -35,6 +35,7 @@ jobs:
           [ -f "sw.js" ] && [ ! -f "www/sw.js" ] && mv sw.js www/sw.js
           [ -f "icon-512.png" ] && [ ! -f "www/assets/icon-512.png" ] && mv icon-512.png www/assets/icon-512.png
           [ -f "welcome-3d.png" ] && [ ! -f "www/assets/welcome-3d.png" ] && mv welcome-3d.png www/assets/welcome-3d.png
+          [ -f "alarm_ring.wav" ] && [ ! -f "www/assets/alarm_ring.wav" ] && mv alarm_ring.wav www/assets/alarm_ring.wav
           test -f www/index.html || (echo "ERROR: www/index.html is missing!" && exit 1)
 
       - name: Add and sync Capacitor Android
@@ -144,6 +145,7 @@ jobs:
               frames = bytearray()
               for i in range(int(sr * dur)):
                   t = i / sr
+                  # 4 loud urgent pulses (0.3s on, 0.3s off)
                   if (t % 0.6) < 0.32:
                       val = 0.85 * (math.sin(2 * math.pi * 880 * t) + 0.5 * math.sin(2 * math.pi * 1320 * t)) / 1.5
                   else:
