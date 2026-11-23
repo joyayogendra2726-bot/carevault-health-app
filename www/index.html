@@ -514,6 +514,7 @@
 <div id="medModal" class="modal-backdrop">
   <div class="modal-sheet">
     <div class="card-title"><span id="lblAddMed">Add Medicine</span><button id="btnCloseMed" class="btn sec sm" onclick="closeMedModal()">Close</button></div>
+    <input type="hidden" id="mEditId" value="" />
     <label id="lblMedName">Medicine Name</label>
     <input id="mName" placeholder="e.g., Metformin 500mg" />
     <div class="row-2">
@@ -549,12 +550,33 @@
         <label>Schedule Frequency</label>
         <select id="mFreq" onchange="onFreqChange()">
           <option value="daily">Every Day</option>
-          <option value="weekdays">Specific Days</option>
-          <option value="alternate">Every 2 Days (Alternate)</option>
+          <option value="interval">Every N Days (e.g., 4 or 7 days)</option>
+          <option value="weekdays">Specific Days (Mon–Sun)</option>
           <option value="sos">As Needed (SOS / No Alarm)</option>
         </select>
       </div>
-      <div><label>Expiry Month (Optional)</label><input type="month" id="mExpiry" /></div>
+      <div>
+        <label>Start Date</label>
+        <input type="date" id="mStartDate" />
+      </div>
+    </div>
+    <div id="intervalWrap" style="display:none" class="row-2">
+      <div>
+        <label>Repeat Every (Days)</label>
+        <input type="number" id="mIntervalDays" min="2" max="90" value="4" placeholder="e.g., 4" />
+      </div>
+      <div>
+        <label>Quick Interval</label>
+        <select onchange="if(this.value) document.getElementById('mIntervalDays').value=this.value">
+          <option value="">Custom</option>
+          <option value="2">Every 2 Days</option>
+          <option value="3">Every 3 Days</option>
+          <option value="4">Every 4 Days</option>
+          <option value="7">Every 7 Days (Weekly)</option>
+          <option value="14">Every 14 Days</option>
+          <option value="30">Every 30 Days</option>
+        </select>
+      </div>
     </div>
     <div id="weekDaysWrap" style="display:none">
       <label>Select Days</label>
@@ -567,6 +589,19 @@
         <button type="button" class="day-chip active" data-day="6" onclick="toggleDayChip(this)">Sat</button>
         <button type="button" class="day-chip active" data-day="0" onclick="toggleDayChip(this)">Sun</button>
       </div>
+    </div>
+    <div class="row-2">
+      <div>
+        <label>Advance Reminder</label>
+        <select id="mAdvanceMins">
+          <option value="5" selected>5 min before</option>
+          <option value="10">10 min before</option>
+          <option value="15">15 min before</option>
+          <option value="30">30 min before</option>
+          <option value="0">Off (Only Exact Time)</option>
+        </select>
+      </div>
+      <div><label>Expiry Month (Optional)</label><input type="month" id="mExpiry" /></div>
     </div>
     <div class="row-2">
       <div><label id="lblPillStock">Pill Stock (Qty)</label><input type="number" id="mStock" value="30" /></div>
@@ -1320,6 +1355,7 @@ let _pendingMedPhoto = '';
 function onFreqChange() {
   const freq = document.getElementById('mFreq').value;
   document.getElementById('weekDaysWrap').style.display = freq === 'weekdays' ? 'block' : 'none';
+  document.getElementById('intervalWrap').style.display = freq === 'interval' ? 'grid' : 'none';
 }
 function toggleDayChip(btn) {
   btn.classList.toggle('active');
@@ -1363,20 +1399,31 @@ function closePhotoModal() {
   document.getElementById('photoModal').classList.remove('open');
 }
 
+function parseLocalDate(dateStr, fallbackTs) {
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  const dt = new Date(fallbackTs || Date.now());
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+}
+
 function isMedDueOnDate(med, dateObj) {
   const freq = med.freq || 'daily';
   if (freq === 'sos') return false;
+  const s = parseLocalDate(med.startDate, med.startTs);
+  const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0);
+  const diffDays = Math.round((d.getTime() - s.getTime()) / 86400000);
+  if (diffDays < 0) return false;
   if (freq === 'daily') return true;
   if (freq === 'weekdays') {
     const days = Array.isArray(med.days) ? med.days : [0, 1, 2, 3, 4, 5, 6];
-    return days.includes(dateObj.getDay());
+    return days.includes(d.getDay());
   }
-  if (freq === 'alternate') {
-    const startMs = med.startTs || Date.now();
-    const s = new Date(startMs); s.setHours(0, 0, 0, 0);
-    const d = new Date(dateObj); d.setHours(0, 0, 0, 0);
-    const diffDays = Math.round((d.getTime() - s.getTime()) / 86400000);
-    return diffDays >= 0 && (diffDays % 2 === 0);
+  if (freq === 'interval' || freq === 'alternate') {
+    const step = freq === 'alternate' ? 2 : Math.max(2, parseInt(med.intervalDays || '4', 10));
+    return (diffDays % step) === 0;
   }
   return true;
 }
@@ -1388,11 +1435,16 @@ function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
     switchTab('settings');
     return;
   }
+  document.getElementById('mEditId').value = '';
+  document.getElementById('lblAddMed').textContent = tr('lblAddMed') || 'Add Medicine';
   document.getElementById('mName').value = name;
   document.getElementById('mSlot').value = slot;
   setPickerFrom24h(time);
   document.getElementById('mStock').value = stock;
   document.getElementById('mFreq').value = 'daily';
+  document.getElementById('mStartDate').value = todayKey();
+  document.getElementById('mIntervalDays').value = 4;
+  document.getElementById('mAdvanceMins').value = '5';
   onFreqChange();
   document.querySelectorAll('#weekDaysChips .day-chip').forEach(c => c.classList.add('active'));
   document.getElementById('mExpiry').value = '';
@@ -1401,15 +1453,55 @@ function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
   document.getElementById('slotWarnBox').style.display = 'none';
   document.getElementById('medModal').classList.add('open');
 }
+
+function editMed(medId) {
+  const m = db.meds.find(x => x.id === medId);
+  if (!m) return;
+  document.getElementById('mEditId').value = m.id;
+  document.getElementById('lblAddMed').textContent = 'Edit Medicine';
+  document.getElementById('mName').value = m.name || '';
+  document.getElementById('mSlot').value = m.slot || 'Morning';
+  setPickerFrom24h(m.time || '08:00');
+  document.getElementById('mStock').value = m.stock || 30;
+  document.getElementById('mNote').value = m.note || 'After Meal';
+  const freqVal = m.freq === 'alternate' ? 'interval' : (m.freq || 'daily');
+  document.getElementById('mFreq').value = freqVal;
+  document.getElementById('mStartDate').value = m.startDate || todayKey();
+  document.getElementById('mIntervalDays').value = m.freq === 'alternate' ? 2 : (m.intervalDays || 4);
+  document.getElementById('mAdvanceMins').value = String(m.advanceMins !== undefined ? m.advanceMins : 5);
+  onFreqChange();
+  const activeDays = Array.isArray(m.days) ? m.days : [0, 1, 2, 3, 4, 5, 6];
+  document.querySelectorAll('#weekDaysChips .day-chip').forEach(c => {
+    const d = parseInt(c.getAttribute('data-day'), 10);
+    c.classList.toggle('active', activeDays.includes(d));
+  });
+  document.getElementById('mExpiry').value = m.expiry || '';
+  document.getElementById('mGapNote').value = m.gapNote || '';
+  _pendingMedPhoto = m.photo || '';
+  if (_pendingMedPhoto) {
+    document.getElementById('mPhotoPreview').src = _pendingMedPhoto;
+    document.getElementById('mPhotoPreviewWrap').style.display = 'block';
+    document.getElementById('mPhotoLabel').textContent = '✅ Photo Ready';
+  } else {
+    clearMedPhoto();
+  }
+  document.getElementById('slotWarnBox').style.display = 'none';
+  document.getElementById('medModal').classList.add('open');
+}
+
 function closeMedModal() { document.getElementById('medModal').classList.remove('open'); }
 
 async function saveMedicine() {
+  const editId = document.getElementById('mEditId').value;
   const name = document.getElementById('mName').value.trim();
   const slot = document.getElementById('mSlot').value;
   const { hh, str: time } = get24hFromPicker();
   const stock = parseInt(document.getElementById('mStock').value || '30', 10);
   const note = document.getElementById('mNote').value;
   const freq = document.getElementById('mFreq').value || 'daily';
+  const startDate = document.getElementById('mStartDate').value || todayKey();
+  const intervalDays = Math.max(2, parseInt(document.getElementById('mIntervalDays').value || '4', 10));
+  const advanceMins = parseInt(document.getElementById('mAdvanceMins').value || '5', 10);
   const expiry = document.getElementById('mExpiry').value || '';
   const gapNote = document.getElementById('mGapNote').value.trim();
   const days = Array.from(document.querySelectorAll('#weekDaysChips .day-chip.active')).map(c => parseInt(c.getAttribute('data-day'), 10));
@@ -1435,20 +1527,31 @@ async function saveMedicine() {
     warnBox.style.display = 'none';
   }
 
-  const med = {
-    id: 'm_' + Date.now(),
-    profileId: db.activeProfileId,
-    name, slot, time, stock, note,
-    freq, days, expiry, gapNote,
-    photo: _pendingMedPhoto || '',
-    startTs: Date.now()
-  };
-  db.meds.push(med);
+  let med;
+  if (editId) {
+    med = db.meds.find(x => x.id === editId);
+    if (med) {
+      Object.assign(med, { name, slot, time, stock, note, freq, startDate, intervalDays, advanceMins, days, expiry, gapNote, photo: _pendingMedPhoto || '' });
+    }
+  }
+  if (!med) {
+    med = {
+      id: 'm_' + Date.now(),
+      profileId: db.activeProfileId,
+      name, slot, time, stock, note,
+      freq, startDate, intervalDays, advanceMins, days, expiry, gapNote,
+      photo: _pendingMedPhoto || '',
+      startTs: Date.now()
+    };
+    db.meds.push(med);
+  }
   saveDB();
   closeMedModal();
+  await cancelMedNotifications(med.id);
   if (freq !== 'sos') await scheduleMedNotification(med);
   renderAll();
-  showToast('Medicine saved');
+  updateAlarmStatusDisplay();
+  showToast(editId ? 'Medicine updated & alarm scheduled' : 'Medicine saved & alarm scheduled');
 }
 
 function getNotifId(medId) {
@@ -1477,21 +1580,24 @@ async function ensureExactAlarmPermission() {
 }
 
 let _notifChannelReady = false;
+let _notifSetupRunning = false;
 async function setupNotificationChannel() {
+  if (_notifSetupRunning) return;
+  _notifSetupRunning = true;
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
     await LN.requestPermissions();
     await LN.createChannel({
-      id: 'carevault_pre_v2',
-      name: 'Pre-Dose Reminders',
-      description: 'Gentle notification 5 minutes before medicine time',
+      id: 'carevault_pre_v4',
+      name: 'Advance Dose Reminders',
+      description: 'Gentle advance notification before medicine time',
       importance: 4,
       visibility: 1,
       vibration: true
     });
     await LN.createChannel({
-      id: 'carevault_alarm_v3',
+      id: 'carevault_alarm_v4',
       name: 'Loud Medicine Alarms',
       description: 'Loud alarm chime when medicine is due or overdue',
       importance: 5,
@@ -1502,13 +1608,14 @@ async function setupNotificationChannel() {
     if (!_notifChannelReady) {
       _notifChannelReady = true;
       LN.addListener('localNotificationReceived', (notif) => {
-        if (notif.channelId === 'carevault_alarm_v3' || notif.channelId === 'carevault_alarm_v2') {
+        if (notif.channelId === 'carevault_alarm_v4' || notif.channelId === 'carevault_alarm_v3' || notif.channelId === 'carevault_alarm_v2') {
           const medId = notif.extra && notif.extra.medId;
           const med = medId ? db.meds.find(m => m.id === medId) : null;
           if (med) {
             const prof = db.profiles.find(p => p.id === med.profileId);
             const who = prof ? prof.name : 'Family';
             startContinuousAlarm(med, who, notif.body || `Time for ${who}: ${med.name}`);
+            scheduleMedNotification(med, true).catch(() => {});
           } else {
             triggerAlarmAndVoice(notif.body || 'Time for your medicine');
           }
@@ -1528,7 +1635,12 @@ async function setupNotificationChannel() {
       });
     }
     await rescheduleAllMeds();
-  } catch (e) {}
+    updateAlarmStatusDisplay();
+  } catch (e) {
+    console.error('setupNotificationChannel error', e);
+  } finally {
+    _notifSetupRunning = false;
+  }
 }
 
 window._audioCtx = null;
@@ -1602,6 +1714,17 @@ function triggerAlarmAndVoice(message, withVoice = true) {
   }
 }
 
+async function openExactAlarmSettings() {
+  const ok = await ensureExactAlarmPermission();
+  if (ok) showToast('Exact Alarm permission is already granted!');
+  updateAlarmStatusDisplay();
+}
+async function resyncAllAlarms(notify = false) {
+  await setupNotificationChannel();
+  await rescheduleAllMeds();
+  await updateAlarmStatusDisplay();
+  if (notify) showToast('All background & advance alarms synced!');
+}
 function testAlarmAndVoice() {
   const prof = db.profiles.find(p => p.id === db.activeProfileId);
   const msg = `CareVault Alarm. Time for ${prof ? prof.name : 'your'} medicine.`;
@@ -1622,13 +1745,24 @@ function getNextExactDate(timeStr) {
   if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
   return target;
 }
+async function cancelMedNotifications(medId) {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN) return;
+    const baseId = getNotifId(medId);
+    const ids = [];
+    for (let i = 0; i < 12; i++) ids.push({ id: baseId + i });
+    await LN.cancel({ notifications: ids });
+  } catch (e) {}
+}
+
 async function scheduleMedNotification(med, skipExactPrompt = false) {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
     const perm = await LN.requestPermissions();
     if (perm && perm.display && perm.display !== 'granted') {
-      showToast('Please allow Notifications for alarms!');
+      if (!skipExactPrompt) showToast('Please allow Notifications for alarms!');
       return;
     }
     if (!skipExactPrompt && LN.checkExactNotificationSetting) {
@@ -1640,49 +1774,70 @@ async function scheduleMedNotification(med, skipExactPrompt = false) {
     }
     const baseId = getNotifId(med.id);
     med.notifId = baseId;
-    try {
-      await LN.cancel({ notifications: [{ id: baseId }, { id: baseId + 1 }] });
-    } catch (e) {}
+    await cancelMedNotifications(med.id);
+    if ((med.freq || 'daily') === 'sos') return;
+
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
-    if ((med.freq || 'daily') === 'sos') return;
     const [hh, mm] = (med.time || '08:00').split(':').map(Number);
-    const target = new Date();
-    target.setHours(hh, mm, 0, 0);
-    if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
-    let guard = 0;
-    while (!isMedDueOnDate(med, target) && guard < 14) {
-      target.setDate(target.getDate() + 1);
-      guard++;
-    }
+    const advMins = med.advanceMins !== undefined ? parseInt(med.advanceMins, 10) : 5;
     const noteText = med.note ? `, ${med.note}` : '';
-    const overdueAt = new Date(target.getTime() + 5 * 60 * 1000);
-    const schedObj = (med.freq || 'daily') === 'daily'
-      ? { at: target, every: 'day', allowWhileIdle: true }
-      : { at: target, allowWhileIdle: true };
-    await LN.schedule({
-      notifications: [
-        {
-          id: baseId,
+
+    // Find next 3 due occurrences within 60 days using exact one-shot allowWhileIdle alarms
+    const notifications = [];
+    const nowMs = Date.now();
+    const cursor = new Date();
+    cursor.setHours(hh, mm, 0, 0);
+    if (cursor.getTime() <= nowMs) cursor.setDate(cursor.getDate() + 1);
+
+    let found = 0;
+    for (let dayOffset = 0; dayOffset < 60 && found < 3; dayOffset++) {
+      const d = new Date(cursor.getTime() + dayOffset * 86400000);
+      if (isMedDueOnDate(med, d)) {
+        const slotIdx = found * 3;
+        // 1) Exact Time Alarm
+        notifications.push({
+          id: baseId + slotIdx,
           title: `CareVault Alarm (${who})`,
           body: `Time for ${who}: ${med.name}${noteText}`,
-          channelId: 'carevault_alarm_v3',
+          channelId: 'carevault_alarm_v4',
           sound: 'carevault_alarm.wav',
           extra: { medId: med.id },
-          schedule: schedObj
-        },
-        {
-          id: baseId + 1,
+          schedule: { at: new Date(d.getTime()), allowWhileIdle: true }
+        });
+        // 2) Overdue Alarm (+5 min)
+        notifications.push({
+          id: baseId + slotIdx + 1,
           title: `Overdue Alarm (${who})`,
           body: `Still pending: ${med.name}${med.note ? ' (' + med.note + ')' : ''}`,
-          channelId: 'carevault_alarm_v3',
+          channelId: 'carevault_alarm_v4',
           sound: 'carevault_alarm.wav',
           extra: { medId: med.id },
-          schedule: { at: overdueAt, allowWhileIdle: true }
+          schedule: { at: new Date(d.getTime() + 5 * 60 * 1000), allowWhileIdle: true }
+        });
+        // 3) Advance Reminder (e.g. 5 min before)
+        if (advMins > 0) {
+          const preAt = new Date(d.getTime() - advMins * 60 * 1000);
+          if (preAt.getTime() > nowMs + 5000) {
+            notifications.push({
+              id: baseId + slotIdx + 2,
+              title: `Upcoming Dose in ${advMins}m (${who})`,
+              body: `Get ready: ${med.name}${noteText} at ${med.time}`,
+              channelId: 'carevault_pre_v4',
+              extra: { medId: med.id, isAdvance: true },
+              schedule: { at: preAt, allowWhileIdle: true }
+            });
+          }
         }
-      ]
-    });
-  } catch (e) {}
+        found++;
+      }
+    }
+    if (notifications.length) {
+      await LN.schedule({ notifications });
+    }
+  } catch (e) {
+    console.error('scheduleMedNotification error', e);
+  }
 }
 
 async function rescheduleAllMeds() {
@@ -1690,6 +1845,23 @@ async function rescheduleAllMeds() {
   for (const med of db.meds) {
     await scheduleMedNotification(med, true);
   }
+}
+
+async function updateAlarmStatusDisplay() {
+  const el = document.getElementById('exactAlarmStatus');
+  if (!el) return;
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN) {
+      el.textContent = 'Web Preview Mode (Native Android alarms active in APK).';
+      return;
+    }
+    const perm = LN.checkPermissions ? await LN.checkPermissions() : { display: 'unknown' };
+    const exact = LN.checkExactNotificationSetting ? await LN.checkExactNotificationSetting() : { exact_alarm: 'granted' };
+    const pend = LN.getPending ? await LN.getPending() : { notifications: [] };
+    const cnt = (pend && pend.notifications) ? pend.notifications.length : 0;
+    el.innerHTML = `Notifications: <b>${perm.display || 'unknown'}</b> • Exact Alarm: <b>${exact.exact_alarm || 'unknown'}</b> • Pending Background Alarms: <b>${cnt}</b>`;
+  } catch (e) {}
 }
 
 function logDose(medId, status) {
@@ -1747,8 +1919,7 @@ async function deleteMed(medId) {
   const med = db.meds.find(m => m.id === medId);
   if (med) {
     try {
-      const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-      if (LN) await LN.cancel({ notifications: [{ id: med.notifId || getNotifId(medId) }, { id: (med.notifId || getNotifId(medId)) + 1 }] });
+      await cancelMedNotifications(medId);
     } catch (e) {}
   }
   db.meds = db.meds.filter(m => m.id !== medId);
@@ -1779,6 +1950,7 @@ function freqLabel(m) {
   const f = m.freq || 'daily';
   if (f === 'sos') return 'SOS';
   if (f === 'alternate') return 'Every 2 Days';
+  if (f === 'interval') return `Every ${m.intervalDays || 4} Days`;
   if (f === 'weekdays') {
     const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     return (m.days || []).map(d => names[d]).join(',');
@@ -1931,7 +2103,8 @@ function renderMeds() {
           <div style="margin-top:4px">${mealBadgeHtml(m.note)} ${expiryBadgeHtml(m.expiry)}</div>
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        <button class="btn sec sm" onclick="editMed('${m.id}')">✏️</button>
         <button class="btn sm" onclick="openRefillModal('${m.id}')">${tr('btnRefill')}</button>
         <button class="btn danger sm" onclick="deleteMed('${m.id}')">${tr('btnRemove')}</button>
       </div>
@@ -2346,7 +2519,7 @@ function snoozeAlarm5m() {
           id: Math.floor(Math.random() * 100000),
           title: `CareVault Snooze (${who})`,
           body: `Still pending: ${med.name} (${med.note})`,
-          channelId: 'carevault_alarm_v3',
+          channelId: 'carevault_alarm_v4',
           sound: 'carevault_alarm.wav',
           actionTypeId: 'MED_REMINDER',
           extra: { medId: med.id },
