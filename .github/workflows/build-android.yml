@@ -68,10 +68,33 @@ jobs:
 
       - name: Patch AndroidManifest.xml permissions
         run: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
-            sed -i 's/<uses-permission android:name="android.permission.INTERNET" \/>/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" \/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" \/>\n    <uses-permission android:name="com.android.vending.BILLING" \/>\n    <uses-permission android:name="android.permission.VIBRATE" \/>\n    <uses-permission android:name="android.permission.WAKE_LOCK" \/>/' "$MANIFEST"
-          fi
+          python3 - << 'PYEOF'
+          p = "android/app/src/main/AndroidManifest.xml"
+          with open(p) as f:
+              s = f.read()
+          perms = [
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+              '<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />',
+              '<uses-permission android:name="com.android.vending.BILLING" />',
+              '<uses-permission android:name="android.permission.VIBRATE" />',
+              '<uses-permission android:name="android.permission.WAKE_LOCK" />',
+          ]
+          missing = "\n    ".join(x for x in perms if x not in s)
+          if missing:
+              s = s.replace("<application", f"    {missing}\n    <application", 1)
+          with open(p, "w") as f:
+              f.write(s)
+          PYEOF
+
+      - name: Copy native loud alarm.wav to Android res/raw
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          cp www/assets/alarm.wav android/app/src/main/res/raw/alarm.wav
+
+      - name: Copy loud alarm_chime.wav to Android res/raw
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          cp android-res/raw/alarm_chime.wav android/app/src/main/res/raw/alarm_chime.wav
 
       - name: Apply custom 512x512 app icon
         run: |
@@ -81,6 +104,8 @@ jobs:
             cp www/assets/icon-512.png "android/app/src/main/res/$dir/ic_launcher.png"
             cp www/assets/icon-512.png "android/app/src/main/res/$dir/ic_launcher_round.png"
           done
+          mkdir -p android/app/src/main/res/raw
+          cp www/assets/alarm_ring.wav android/app/src/main/res/raw/alarm_ring.wav
 
       - name: Prepare fixed signing keystore
         run: |
@@ -111,6 +136,28 @@ jobs:
               }
           }
           EOF
+
+      - name: Generate loud native alarm WAV sound
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          python3 - << 'PYEOF'
+          import wave, struct, math
+          sr = 22050
+          dur = 2.4
+          with wave.open("android/app/src/main/res/raw/carevault_alarm.wav", "w") as wf:
+              wf.setnchannels(1)
+              wf.setsampwidth(2)
+              wf.setframerate(sr)
+              frames = bytearray()
+              for i in range(int(sr * dur)):
+                  t = i / sr
+                  if (t % 0.6) < 0.32:
+                      val = 0.85 * (math.sin(2 * math.pi * 880 * t) + 0.5 * math.sin(2 * math.pi * 1320 * t)) / 1.5
+                  else:
+                      val = 0.0
+                  frames += struct.pack("<h", int(max(-1.0, min(1.0, val)) * 32767))
+              wf.writeframes(frames)
+          PYEOF
 
       - name: Build Debug APK and Signed Release AAB
         run: |
