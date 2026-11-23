@@ -10,5 +10,6 @@
       "smallIcon": "ic_launcher",
       "iconColor": "#14B8A6"
     }
-  }
+  },
+  "backgroundColor": "#07131D"
 }
