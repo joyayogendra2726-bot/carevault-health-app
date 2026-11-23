@@ -1247,14 +1247,21 @@ function getNotifId(medId) {
 async function ensureExactAlarmPermission() {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-    if (!LN || !LN.checkExactNotificationSetting) return;
+    if (!LN || !LN.checkExactNotificationSetting) return true;
     const res = await LN.checkExactNotificationSetting();
-    if (res && res.exact_alarm !== 'granted' && LN.changeExactNotificationSetting) {
-      await LN.changeExactNotificationSetting();
+    if (res && res.exact_alarm !== 'granted') {
+      if (LN.changeExactNotificationSetting) {
+        await LN.changeExactNotificationSetting();
+      }
+      return false;
     }
-  } catch (e) {}
+    return true;
+  } catch (e) {
+    return true;
+  }
 }
 
+let _notifChannelReady = false;
 async function setupNotificationChannel() {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
@@ -1269,23 +1276,43 @@ async function setupNotificationChannel() {
       vibration: true
     });
     await LN.createChannel({
-      id: 'carevault_alarm_v2',
+      id: 'carevault_alarm_v3',
       name: 'Loud Medicine Alarms',
-      description: 'Loud 18-second alarm chime when medicine is due or overdue',
+      description: 'Loud alarm chime when medicine is due or overdue',
       importance: 5,
       visibility: 1,
-      sound: 'alarm_ring.wav',
-      vibration: true,
-      sound: 'alarm_chime'
+      sound: 'carevault_alarm.wav',
+      vibration: true
     });
-    LN.addListener('localNotificationReceived', (notif) => {
-      if (notif.channelId === 'carevault_alarm_v2') {
-        triggerAlarmAndVoice(notif.body || 'Time for your medicine');
-      }
-    });
-    LN.addListener('localNotificationActionPerformed', (act) => {
-      triggerAlarmAndVoice(act.notification?.body || 'Time for your medicine');
-    });
+    if (!_notifChannelReady) {
+      _notifChannelReady = true;
+      LN.addListener('localNotificationReceived', (notif) => {
+        if (notif.channelId === 'carevault_alarm_v3' || notif.channelId === 'carevault_alarm_v2') {
+          const medId = notif.extra && notif.extra.medId;
+          const med = medId ? db.meds.find(m => m.id === medId) : null;
+          if (med) {
+            const prof = db.profiles.find(p => p.id === med.profileId);
+            const who = prof ? prof.name : 'Family';
+            startContinuousAlarm(med, who, notif.body || `Time for ${who}: ${med.name}`);
+          } else {
+            triggerAlarmAndVoice(notif.body || 'Time for your medicine');
+          }
+        }
+      });
+      LN.addListener('localNotificationActionPerformed', (act) => {
+        const notif = act.notification || {};
+        const medId = notif.extra && notif.extra.medId;
+        const med = medId ? db.meds.find(m => m.id === medId) : null;
+        if (med) {
+          const prof = db.profiles.find(p => p.id === med.profileId);
+          const who = prof ? prof.name : 'Family';
+          startContinuousAlarm(med, who, notif.body || `Time for ${who}: ${med.name}`);
+        } else {
+          triggerAlarmAndVoice(notif.body || 'Time for your medicine');
+        }
+      });
+    }
+    await rescheduleAllMeds();
   } catch (e) {}
 }
 
@@ -1380,38 +1407,65 @@ function getNextExactDate(timeStr) {
   if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
   return target;
 }
-async function scheduleMedNotification(med) {
+async function scheduleMedNotification(med, skipExactPrompt = false) {
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
-    await LN.requestPermissions();
+    const perm = await LN.requestPermissions();
+    if (perm && perm.display && perm.display !== 'granted') {
+      showToast('Please allow Notifications for alarms!');
+      return;
+    }
+    if (!skipExactPrompt && LN.checkExactNotificationSetting) {
+      const exact = await LN.checkExactNotificationSetting();
+      if (exact && exact.exact_alarm !== 'granted') {
+        showToast('Please enable Alarms & reminders permission');
+        await ensureExactAlarmPermission();
+      }
+    }
+    const baseId = getNotifId(med.id);
+    med.notifId = baseId;
+    try {
+      await LN.cancel({ notifications: [{ id: baseId }, { id: baseId + 1 }] });
+    } catch (e) {}
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
-    const [hh, mm] = med.time.split(':').map(Number);
+    const [hh, mm] = (med.time || '08:00').split(':').map(Number);
     const target = new Date();
     target.setHours(hh, mm, 0, 0);
     if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
+    const noteText = med.note ? `, ${med.note}` : '';
+    const overdueAt = new Date(target.getTime() + 5 * 60 * 1000);
     await LN.schedule({
       notifications: [
         {
-          id: Math.floor(Math.random() * 100000),
+          id: baseId,
           title: `CareVault Alarm (${who})`,
-          body: `Time for ${who}: ${med.name}, ${med.note}`,
+          body: `Time for ${who}: ${med.name}${noteText}`,
           channelId: 'carevault_alarm_v3',
           sound: 'carevault_alarm.wav',
-          schedule: { at: target, allowWhileIdle: true }
+          extra: { medId: med.id },
+          schedule: { at: target, every: 'day', allowWhileIdle: true }
         },
         {
-          id: Math.floor(Math.random() * 100000) + 100000,
+          id: baseId + 1,
           title: `Overdue Alarm (${who})`,
-          body: `Still pending: ${med.name} (${med.note})`,
+          body: `Still pending: ${med.name}${med.note ? ' (' + med.note + ')' : ''}`,
           channelId: 'carevault_alarm_v3',
           sound: 'carevault_alarm.wav',
-          schedule: { at: new Date(target.getTime() + 5 * 60 * 1000), allowWhileIdle: true }
+          extra: { medId: med.id },
+          schedule: { at: overdueAt, allowWhileIdle: true }
         }
       ]
     });
   } catch (e) {}
+}
+
+async function rescheduleAllMeds() {
+  if (!db || !Array.isArray(db.meds)) return;
+  for (const med of db.meds) {
+    await scheduleMedNotification(med, true);
+  }
 }
 
 function logDose(medId, status) {
@@ -1429,6 +1483,10 @@ function logDose(medId, status) {
     }
   }
   if (_snoozeTimers[medId]) { clearTimeout(_snoozeTimers[medId]); delete _snoozeTimers[medId]; }
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (LN) LN.cancel({ notifications: [{ id: getNotifId(medId) + 1 }] }).catch(() => {});
+  } catch (e) {}
   saveDB();
   renderAll();
   if (med && status === 'taken') {
@@ -1466,7 +1524,7 @@ async function deleteMed(medId) {
   if (med) {
     try {
       const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-      if (LN) await LN.cancel({ notifications: [{ id: med.notifId || getNotifId(medId) }] });
+      if (LN) await LN.cancel({ notifications: [{ id: med.notifId || getNotifId(medId) }, { id: (med.notifId || getNotifId(medId)) + 1 }] });
     } catch (e) {}
   }
   db.meds = db.meds.filter(m => m.id !== medId);
@@ -1832,6 +1890,11 @@ function renderAll() {
 }
 
 document.addEventListener('deviceready', () => { initBilling(); setupNotificationChannel(); }, false);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { setupNotificationChannel(); });
+} else {
+  setupNotificationChannel();
+}
 let _firedAlarms = {};
 let _ringingMedId = null;
 let _alarmLoop = null;
@@ -1880,7 +1943,7 @@ function snoozeAlarm5m() {
           title: `CareVault Snooze (${who})`,
           body: `Still pending: ${med.name} (${med.note})`,
           channelId: 'carevault_alarm_v3',
-          sound: 'alarm_ring.wav',
+          sound: 'carevault_alarm.wav',
           actionTypeId: 'MED_REMINDER',
           extra: { medId: med.id },
           schedule: { at: new Date(Date.now() + 5 * 60 * 1000), allowWhileIdle: true }
