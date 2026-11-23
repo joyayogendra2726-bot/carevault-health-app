@@ -220,6 +220,34 @@
       background: var(--accent); color: #042F2E; padding: 9px 16px; border-radius: 999px;
       font-weight: 700; font-size: 13px; z-index: 200; display: none; box-shadow: 0 6px 20px rgba(0,0,0,0.35);
     }
+    .heatmap-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-top: 8px; }
+    .hm-cell {
+      aspect-ratio: 1; border-radius: 6px; background: var(--surface-2);
+      border: 1px solid var(--border); cursor: pointer; transition: transform 0.12s;
+    }
+    .hm-cell:active { transform: scale(0.92); }
+    .hm-cell.ok { background: var(--ok); border-color: var(--ok); }
+    .hm-cell.part { background: var(--warn); border-color: var(--warn); }
+    .hm-cell.miss { background: rgba(244,63,94,0.35); border-color: var(--danger); }
+    .med-thumb {
+      width: 40px; height: 40px; border-radius: 10px; object-fit: cover;
+      border: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+    }
+    .day-chips { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
+    .day-chip {
+      padding: 7px 2px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; text-align: center;
+    }
+    .day-chip.active { background: var(--accent); color: #042F2E; border-color: var(--accent); }
+    .overdue-banner {
+      background: rgba(244,63,94,0.12); border: 1px solid var(--danger);
+      border-radius: 14px; padding: 11px 12px; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .meal-pill {
+      display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700;
+      background: rgba(20,184,166,0.14); color: var(--accent); margin-right: 4px;
+    }
     @media print {
       .topbar, .profile-strip, .bottom-nav, .no-print, .welcome-splash { display: none !important; }
       body { background: #fff; color: #000; }
@@ -262,7 +290,20 @@
         </div>
       </div>
     </div>
+    <div id="overdueFamilyBanner"></div>
     <div id="todayList"></div>
+    <div class="card" id="heatmapCard" style="margin-top:12px">
+      <div class="card-title">
+        <span>30-Day Adherence &amp; Streak</span>
+        <span id="streakBadge" class="badge ok">0d Streak</span>
+      </div>
+      <div id="adherenceHeatmap" class="heatmap-grid"></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:6px">
+        <span>30 days ago</span>
+        <span>🟢 100% &nbsp; 🟡 Partial &nbsp; 🔴 Missed</span>
+        <span>Today</span>
+      </div>
+    </div>
   </section>
 
   <!-- TAB 2: MEDS & STOCK -->
@@ -332,6 +373,38 @@
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Generate a clean 30-day adherence, active medicine list, and vitals summary for your doctor visit.</p>
       <button id="lblGenReport" class="btn full" onclick="generateDoctorReport()">Generate Doctor Report (Print / PDF)</button>
       <div id="reportPreview" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>Lab Report &amp; Biomarker Vault</span></div>
+      <div class="row-2">
+        <div>
+          <label>Test / Marker</label>
+          <select id="labTestType" onchange="onLabTypeChange()">
+            <option value="HbA1c">HbA1c (%)</option>
+            <option value="Vitamin D">Vitamin D (ng/mL)</option>
+            <option value="TSH (Thyroid)">TSH / Thyroid (mIU/L)</option>
+            <option value="Cholesterol">Total Cholesterol (mg/dL)</option>
+            <option value="Hemoglobin">Hemoglobin (g/dL)</option>
+            <option value="Creatinine">Creatinine (mg/dL)</option>
+            <option value="Custom">Custom Test</option>
+          </select>
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" id="labDate" />
+        </div>
+      </div>
+      <div id="labCustomWrap" style="display:none">
+        <label>Custom Test Name</label>
+        <input id="labCustomName" placeholder="e.g., Vitamin B12" />
+      </div>
+      <div class="row-2">
+        <div><label>Result Value</label><input id="labValue" placeholder="e.g., 6.4 %" /></div>
+        <div><label>Lab / Note (Optional)</label><input id="labNote" placeholder="e.g., Fasting, Normal" /></div>
+      </div>
+      <button class="btn full" onclick="saveLabResult()">Save Lab Result</button>
+      <div id="labList" style="margin-top:12px"></div>
     </div>
 
     <div class="card">
@@ -433,6 +506,7 @@
       <button class="btn" onclick="stopAlarmAndTake()">Take Now</button>
       <button class="btn sec" onclick="snoozeAlarm5m()">Snooze 5m</button>
     </div>
+    <button class="btn sec sm full" style="margin-top:8px" onclick="alertFamilyForRinging()">📲 Alert Family on WhatsApp</button>
   </div>
 </div>
 
@@ -471,9 +545,33 @@
     </div>
     <div id="slotWarnBox" class="slot-warn"></div>
     <div class="row-2">
+      <div>
+        <label>Schedule Frequency</label>
+        <select id="mFreq" onchange="onFreqChange()">
+          <option value="daily">Every Day</option>
+          <option value="weekdays">Specific Days</option>
+          <option value="alternate">Every 2 Days (Alternate)</option>
+          <option value="sos">As Needed (SOS / No Alarm)</option>
+        </select>
+      </div>
+      <div><label>Expiry Month (Optional)</label><input type="month" id="mExpiry" /></div>
+    </div>
+    <div id="weekDaysWrap" style="display:none">
+      <label>Select Days</label>
+      <div class="day-chips" id="weekDaysChips">
+        <button type="button" class="day-chip active" data-day="1" onclick="toggleDayChip(this)">Mon</button>
+        <button type="button" class="day-chip active" data-day="2" onclick="toggleDayChip(this)">Tue</button>
+        <button type="button" class="day-chip active" data-day="3" onclick="toggleDayChip(this)">Wed</button>
+        <button type="button" class="day-chip active" data-day="4" onclick="toggleDayChip(this)">Thu</button>
+        <button type="button" class="day-chip active" data-day="5" onclick="toggleDayChip(this)">Fri</button>
+        <button type="button" class="day-chip active" data-day="6" onclick="toggleDayChip(this)">Sat</button>
+        <button type="button" class="day-chip active" data-day="0" onclick="toggleDayChip(this)">Sun</button>
+      </div>
+    </div>
+    <div class="row-2">
       <div><label id="lblPillStock">Pill Stock (Qty)</label><input type="number" id="mStock" value="30" /></div>
       <div>
-        <label id="lblInstr">Instruction</label>
+        <label id="lblInstr">Meal Timing</label>
         <select id="mNote">
           <option id="optAfterMeal" value="After Meal">After Meal</option>
           <option id="optBeforeMeal" value="Before Meal">Before Meal</option>
@@ -481,6 +579,20 @@
           <option id="optBedtime" value="Bedtime">Bedtime</option>
         </select>
       </div>
+    </div>
+    <div class="row-2">
+      <div><label>Dose-Gap / Personal Note</label><input id="mGapNote" placeholder="e.g., 2h gap from Calcium" /></div>
+      <div>
+        <label>Pill / Box Photo (Offline)</label>
+        <label class="btn sec sm full" style="text-align:center;cursor:pointer;margin:0 0 10px">
+          <span id="mPhotoLabel">📷 Add Photo</span>
+          <input type="file" id="mPhotoInput" accept="image/*" style="display:none" onchange="handleMedPhoto(event)" />
+        </label>
+      </div>
+    </div>
+    <div id="mPhotoPreviewWrap" style="display:none;margin-bottom:10px;text-align:center">
+      <img id="mPhotoPreview" style="max-height:90px;border-radius:10px;border:1px solid var(--border)" />
+      <button type="button" class="btn danger sm" style="margin-left:8px" onclick="clearMedPhoto()">Remove</button>
     </div>
     <button class="btn full" id="lblSaveAlarm" onclick="saveMedicine()">Save &amp; Schedule Alarm</button>
   </div>
@@ -509,6 +621,14 @@
     <label id="lblMemberName">Name / Relation</label>
     <input id="pName" placeholder="e.g., Dad, Mom, Spouse, Child" />
     <button class="btn full" id="lblAddProfile" onclick="saveProfile()">Add Profile</button>
+  </div>
+</div>
+
+<!-- PILL PHOTO PREVIEW MODAL -->
+<div id="photoModal" class="modal-backdrop" style="z-index:550;align-items:center;" onclick="closePhotoModal()">
+  <div class="modal-sheet" style="border-radius:20px;margin:16px;text-align:center;" onclick="event.stopPropagation()">
+    <div class="card-title"><span id="photoModalTitle">Pill Photo</span><button class="btn sec sm" onclick="closePhotoModal()">Close</button></div>
+    <img id="photoModalImg" style="max-width:100%;max-height:60vh;border-radius:12px;border:1px solid var(--border)" />
   </div>
 </div>
 
@@ -1008,22 +1128,31 @@ function detectDefaultLang() {
 let db = loadDB();
 
 function loadDB() {
+  let data = null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) data = JSON.parse(raw);
   } catch (e) {}
-  return {
-    firstOpened: Date.now(),
-    isPro: false,
-    theme: 'dark',
-    lang: detectDefaultLang(),
-    voiceEnabled: true,
-    activeProfileId: 'self',
-    profiles: [{ id: 'self', name: 'Self', blood: '', phone: '', allergies: '' }],
-    meds: [],
-    logs: {},
-    vitals: []
-  };
+  if (!data) {
+    data = {
+      firstOpened: Date.now(),
+      isPro: false,
+      theme: 'dark',
+      lang: detectDefaultLang(),
+      voiceEnabled: true,
+      activeProfileId: 'self',
+      profiles: [{ id: 'self', name: 'Self', blood: '', phone: '', allergies: '' }],
+      meds: [],
+      logs: {},
+      vitals: [],
+      labs: []
+    };
+  }
+  if (!Array.isArray(data.labs)) data.labs = [];
+  if (!Array.isArray(data.meds)) data.meds = [];
+  if (!Array.isArray(data.vitals)) data.vitals = [];
+  if (!data.logs || typeof data.logs !== 'object') data.logs = {};
+  return data;
 }
 
 function saveDB() {
@@ -1186,6 +1315,72 @@ function get24hFromPicker() {
   return { hh, mm, str: String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') };
 }
 
+let _pendingMedPhoto = '';
+
+function onFreqChange() {
+  const freq = document.getElementById('mFreq').value;
+  document.getElementById('weekDaysWrap').style.display = freq === 'weekdays' ? 'block' : 'none';
+}
+function toggleDayChip(btn) {
+  btn.classList.toggle('active');
+}
+function clearMedPhoto() {
+  _pendingMedPhoto = '';
+  const inp = document.getElementById('mPhotoInput');
+  if (inp) inp.value = '';
+  document.getElementById('mPhotoPreviewWrap').style.display = 'none';
+  document.getElementById('mPhotoLabel').textContent = '📷 Add Photo';
+}
+function handleMedPhoto(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 320;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      _pendingMedPhoto = canvas.toDataURL('image/jpeg', 0.72);
+      document.getElementById('mPhotoPreview').src = _pendingMedPhoto;
+      document.getElementById('mPhotoPreviewWrap').style.display = 'block';
+      document.getElementById('mPhotoLabel').textContent = '✅ Photo Ready';
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+function openPhotoModal(title, src) {
+  document.getElementById('photoModalTitle').textContent = title || 'Pill Photo';
+  document.getElementById('photoModalImg').src = src;
+  document.getElementById('photoModal').classList.add('open');
+}
+function closePhotoModal() {
+  document.getElementById('photoModal').classList.remove('open');
+}
+
+function isMedDueOnDate(med, dateObj) {
+  const freq = med.freq || 'daily';
+  if (freq === 'sos') return false;
+  if (freq === 'daily') return true;
+  if (freq === 'weekdays') {
+    const days = Array.isArray(med.days) ? med.days : [0, 1, 2, 3, 4, 5, 6];
+    return days.includes(dateObj.getDay());
+  }
+  if (freq === 'alternate') {
+    const startMs = med.startTs || Date.now();
+    const s = new Date(startMs); s.setHours(0, 0, 0, 0);
+    const d = new Date(dateObj); d.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((d.getTime() - s.getTime()) / 86400000);
+    return diffDays >= 0 && (diffDays % 2 === 0);
+  }
+  return true;
+}
+
 function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
   const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   if (!hasProAccess() && profMeds.length >= FREE_MAX_MEDS) {
@@ -1197,6 +1392,12 @@ function openMedModal(name = '', slot = 'Morning', time = '08:00', stock = 30) {
   document.getElementById('mSlot').value = slot;
   setPickerFrom24h(time);
   document.getElementById('mStock').value = stock;
+  document.getElementById('mFreq').value = 'daily';
+  onFreqChange();
+  document.querySelectorAll('#weekDaysChips .day-chip').forEach(c => c.classList.add('active'));
+  document.getElementById('mExpiry').value = '';
+  document.getElementById('mGapNote').value = '';
+  clearMedPhoto();
   document.getElementById('slotWarnBox').style.display = 'none';
   document.getElementById('medModal').classList.add('open');
 }
@@ -1208,30 +1409,44 @@ async function saveMedicine() {
   const { hh, str: time } = get24hFromPicker();
   const stock = parseInt(document.getElementById('mStock').value || '30', 10);
   const note = document.getElementById('mNote').value;
+  const freq = document.getElementById('mFreq').value || 'daily';
+  const expiry = document.getElementById('mExpiry').value || '';
+  const gapNote = document.getElementById('mGapNote').value.trim();
+  const days = Array.from(document.querySelectorAll('#weekDaysChips .day-chip.active')).map(c => parseInt(c.getAttribute('data-day'), 10));
   if (!name) return showToast('Enter medicine name');
+  if (freq === 'weekdays' && !days.length) return showToast('Select at least 1 day');
 
-  const warnBox = document.getElementById('slotWarnBox');
-  let errMsg = '';
-  if (slot === 'Morning' && !(hh >= 4 && hh < 12)) {
-    errMsg = '⚠️ Morning slot requires a time between 4:00 AM and 11:59 AM (or change the Slot).';
-  } else if (slot === 'Afternoon' && !(hh >= 12 && hh < 17)) {
-    errMsg = '⚠️ Afternoon slot requires a time between 12:00 PM and 4:59 PM (or change the Slot).';
-  } else if (slot === 'Night' && !(hh >= 17 || hh < 4)) {
-    errMsg = '⚠️ Night slot requires a time between 5:00 PM and 3:59 AM (or change the Slot).';
+  if (freq !== 'sos') {
+    const warnBox = document.getElementById('slotWarnBox');
+    let errMsg = '';
+    if (slot === 'Morning' && !(hh >= 4 && hh < 12)) {
+      errMsg = '⚠️ Morning slot requires a time between 4:00 AM and 11:59 AM (or change the Slot).';
+    } else if (slot === 'Afternoon' && !(hh >= 12 && hh < 17)) {
+      errMsg = '⚠️ Afternoon slot requires a time between 12:00 PM and 4:59 PM (or change the Slot).';
+    } else if (slot === 'Night' && !(hh >= 17 || hh < 4)) {
+      errMsg = '⚠️ Night slot requires a time between 5:00 PM and 3:59 AM (or change the Slot).';
+    }
+    if (errMsg) {
+      warnBox.textContent = errMsg;
+      warnBox.style.display = 'block';
+      showToast('Slot and Time do not match!');
+      return;
+    }
+    warnBox.style.display = 'none';
   }
-  if (errMsg) {
-    warnBox.textContent = errMsg;
-    warnBox.style.display = 'block';
-    showToast('Slot and Time do not match!');
-    return;
-  }
-  warnBox.style.display = 'none';
 
-  const med = { id: 'm_' + Date.now(), profileId: db.activeProfileId, name, slot, time, stock, note };
+  const med = {
+    id: 'm_' + Date.now(),
+    profileId: db.activeProfileId,
+    name, slot, time, stock, note,
+    freq, days, expiry, gapNote,
+    photo: _pendingMedPhoto || '',
+    startTs: Date.now()
+  };
   db.meds.push(med);
   saveDB();
   closeMedModal();
-  await scheduleMedNotification(med);
+  if (freq !== 'sos') await scheduleMedNotification(med);
   renderAll();
   showToast('Medicine saved');
 }
@@ -1430,12 +1645,21 @@ async function scheduleMedNotification(med, skipExactPrompt = false) {
     } catch (e) {}
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
+    if ((med.freq || 'daily') === 'sos') return;
     const [hh, mm] = (med.time || '08:00').split(':').map(Number);
     const target = new Date();
     target.setHours(hh, mm, 0, 0);
     if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
+    let guard = 0;
+    while (!isMedDueOnDate(med, target) && guard < 14) {
+      target.setDate(target.getDate() + 1);
+      guard++;
+    }
     const noteText = med.note ? `, ${med.note}` : '';
     const overdueAt = new Date(target.getTime() + 5 * 60 * 1000);
+    const schedObj = (med.freq || 'daily') === 'daily'
+      ? { at: target, every: 'day', allowWhileIdle: true }
+      : { at: target, allowWhileIdle: true };
     await LN.schedule({
       notifications: [
         {
@@ -1445,7 +1669,7 @@ async function scheduleMedNotification(med, skipExactPrompt = false) {
           channelId: 'carevault_alarm_v3',
           sound: 'carevault_alarm.wav',
           extra: { medId: med.id },
-          schedule: { at: target, every: 'day', allowWhileIdle: true }
+          schedule: schedObj
         },
         {
           id: baseId + 1,
@@ -1532,39 +1756,160 @@ async function deleteMed(medId) {
   renderAll();
 }
 
+function mealBadgeHtml(note) {
+  const map = {
+    'After Meal': '🍽️ After Meal',
+    'Before Meal': '⏳ Before Meal',
+    'Empty Stomach': '🌅 Empty Stomach',
+    'Bedtime': '🌙 Bedtime'
+  };
+  return `<span class="meal-pill">${map[note] || esc(note || '')}</span>`;
+}
+function expiryBadgeHtml(expiry) {
+  if (!expiry) return '';
+  const now = new Date();
+  const curYM = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  if (expiry < curYM) return `<span class="badge danger">Expired (${expiry})</span>`;
+  const [ey, em] = expiry.split('-').map(Number);
+  const diffMonths = (ey - now.getFullYear()) * 12 + (em - (now.getMonth() + 1));
+  if (diffMonths <= 2) return `<span class="badge warn">Exp Soon: ${expiry}</span>`;
+  return '';
+}
+function freqLabel(m) {
+  const f = m.freq || 'daily';
+  if (f === 'sos') return 'SOS';
+  if (f === 'alternate') return 'Every 2 Days';
+  if (f === 'weekdays') {
+    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return (m.days || []).map(d => names[d]).join(',');
+  }
+  return 'Daily';
+}
+
+function sendFamilyWhatsApp(medName, timeStr) {
+  const prof = db.profiles.find(p => p.id === db.activeProfileId) || { name: 'Family' };
+  const rawPhone = (prof.phone || '').replace(/[^0-9+]/g, '');
+  const text = `CareVault Alert: ${prof.name}'s medicine "${medName}" (${timeStr}) is still pending. Please check in!`;
+  const waUrl = rawPhone
+    ? `https://wa.me/${rawPhone.replace(/^\+/, '')}?text=${encodeURIComponent(text)}`
+    : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  window.open(waUrl, '_blank');
+}
+
+function alertFamilyForRinging() {
+  const med = db.meds.find(m => m.id === _ringingMedId);
+  if (med) sendFamilyWhatsApp(med.name, med.time);
+  else sendFamilyWhatsApp('Scheduled Medicine', 'Now');
+}
+
+function renderHeatmap() {
+  const grid = document.getElementById('adherenceHeatmap');
+  const streakEl = document.getElementById('streakBadge');
+  if (!grid || !streakEl) return;
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId && (m.freq || 'daily') !== 'sos');
+  let cells = '';
+  let streak = 0;
+  let streakBroken = false;
+  const today = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const due = profMeds.filter(m => isMedDueOnDate(m, d));
+    const log = db.logs[key] || {};
+    const taken = due.filter(m => log[m.id] === 'taken').length;
+    let cls = '';
+    if (due.length > 0) {
+      if (taken >= due.length) cls = 'ok';
+      else if (taken > 0) cls = 'part';
+      else if (i > 0) cls = 'miss';
+    }
+    cells += `<div class="hm-cell ${cls}" title="${key}: ${taken}/${due.length}" onclick="showToast('${key}: ${taken}/${due.length} taken')"></div>`;
+  }
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const due = profMeds.filter(m => isMedDueOnDate(m, d));
+    if (!due.length) continue;
+    const log = db.logs[key] || {};
+    const taken = due.filter(m => log[m.id] === 'taken').length;
+    if (taken >= due.length) {
+      if (!streakBroken) streak++;
+    } else if (i > 0) {
+      streakBroken = true;
+    }
+  }
+  grid.innerHTML = cells;
+  streakEl.textContent = `🔥 ${streak}d Streak`;
+}
+
 function renderToday() {
-  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const now = new Date();
+  const allProfMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const dueMeds = allProfMeds.filter(m => isMedDueOnDate(m, now));
+  const sosMeds = allProfMeds.filter(m => (m.freq || 'daily') === 'sos');
+  const displayMeds = [...dueMeds, ...sosMeds];
   const k = todayKey();
   const dayLog = db.logs[k] || {};
-  const takenCount = profMeds.filter(m => dayLog[m.id] === 'taken').length;
-  const pct = profMeds.length ? Math.round((takenCount / profMeds.length) * 100) : 0;
+  const takenCount = dueMeds.filter(m => dayLog[m.id] === 'taken').length;
+  const pct = dueMeds.length ? Math.round((takenCount / dueMeds.length) * 100) : 0;
 
   const ring = document.getElementById('adherenceRing');
   ring.style.setProperty('--pct', pct);
   ring.setAttribute('data-label', pct + '%');
-  document.getElementById('todaySummary').textContent = tr('dosesSummary').replace('{taken}', takenCount).replace('{total}', profMeds.length);
+  document.getElementById('todaySummary').textContent = tr('dosesSummary').replace('{taken}', takenCount).replace('{total}', dueMeds.length);
+
+  // Overdue family alert banner (>20 mins past due)
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const overdueMed = dueMeds.find(m => {
+    if (dayLog[m.id] === 'taken' || dayLog[m.id] === 'skipped') return false;
+    const [mh, mm] = (m.time || '08:00').split(':').map(Number);
+    return (nowMins - (mh * 60 + mm)) >= 20;
+  });
+  const banner = document.getElementById('overdueFamilyBanner');
+  if (banner) {
+    if (overdueMed) {
+      banner.innerHTML = `<div class="overdue-banner">
+        <div style="font-size:12px"><b>Overdue:</b> ${esc(overdueMed.name)} (${overdueMed.time})</div>
+        <button class="btn danger sm" onclick="sendFamilyWhatsApp('${esc(overdueMed.name).replace(/'/g, '')}','${overdueMed.time}')">📲 Alert Family</button>
+      </div>`;
+    } else {
+      banner.innerHTML = '';
+    }
+  }
 
   const list = document.getElementById('todayList');
-  if (!profMeds.length) {
+  if (!displayMeds.length) {
     list.innerHTML = `<div class="card"><p style="margin:0;color:var(--muted);font-size:13px">${tr('lblNoMeds')}</p></div>`;
+    renderHeatmap();
     return;
   }
-  list.innerHTML = profMeds.map(m => {
+  list.innerHTML = displayMeds.map(m => {
     const st = dayLog[m.id];
     const lowStock = hasProAccess() && m.stock <= 5;
+    const isSos = (m.freq || 'daily') === 'sos';
+    const thumb = m.photo ? `<img class="med-thumb" src="${m.photo}" alt="pill" onclick="openPhotoModal('${esc(m.name).replace(/'/g, '')}', this.src)" />` : '';
     return `<div class="med-item">
-      <div class="med-info">
-        <h4>${esc(m.name)}</h4>
-        <p>${m.slot} • ${m.time} • ${esc(m.note)} • ${tr('lblStock')}: <b>${m.stock}</b></p>
-        ${st === 'taken' ? `<span class="badge ok">${tr('lblTaken')}</span>` : st === 'skipped' ? `<span class="badge warn">${tr('lblSkipped')}</span>` : ''}
-        ${lowStock ? `<span class="badge danger">${tr('lblRefillSoon').replace('{n}', m.stock)}</span>` : ''}
+      <div style="display:flex;gap:10px;align-items:center;min-width:0;flex:1">
+        ${thumb}
+        <div class="med-info">
+          <h4>${esc(m.name)}</h4>
+          <p>${isSos ? 'SOS (As Needed)' : `${m.slot} • ${m.time}`} • ${tr('lblStock')}: <b>${m.stock}</b></p>
+          <div style="margin-top:4px">
+            ${mealBadgeHtml(m.note)}
+            ${m.gapNote ? `<span class="badge warn">${esc(m.gapNote)}</span>` : ''}
+            ${st === 'taken' ? `<span class="badge ok">${tr('lblTaken')}</span>` : st === 'skipped' ? `<span class="badge warn">${tr('lblSkipped')}</span>` : ''}
+            ${lowStock ? `<span class="badge danger">${tr('lblRefillSoon').replace('{n}', m.stock)}</span>` : ''}
+            ${expiryBadgeHtml(m.expiry)}
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn sm" onclick="logDose('${m.id}','taken')">${tr('btnTake')}</button>
-        <button class="btn sec sm" onclick="logDose('${m.id}','skipped')">${tr('btnSkip')}</button>
+        ${isSos ? '' : `<button class="btn sec sm" onclick="logDose('${m.id}','skipped')">${tr('btnSkip')}</button>`}
       </div>
     </div>`;
   }).join('');
+  renderHeatmap();
 }
 
 function renderMeds() {
@@ -1575,17 +1920,23 @@ function renderMeds() {
     list.innerHTML = `<p style="color:var(--muted);font-size:13px;margin:0">Tap a preset above or + Custom to add a medicine.</p>`;
     return;
   }
-  list.innerHTML = profMeds.map(m => `
-    <div class="med-item">
-      <div class="med-info">
-        <h4>${esc(m.name)}</h4>
-        <p>${m.slot} (${m.time}) • ${tr('lblStock')}: <b>${m.stock}</b></p>
+  list.innerHTML = profMeds.map(m => {
+    const thumb = m.photo ? `<img class="med-thumb" src="${m.photo}" alt="pill" onclick="openPhotoModal('${esc(m.name).replace(/'/g, '')}', this.src)" />` : '';
+    return `<div class="med-item">
+      <div style="display:flex;gap:10px;align-items:center;min-width:0;flex:1">
+        ${thumb}
+        <div class="med-info">
+          <h4>${esc(m.name)}</h4>
+          <p>${m.slot} (${m.time}) • ${freqLabel(m)} • ${tr('lblStock')}: <b>${m.stock}</b></p>
+          <div style="margin-top:4px">${mealBadgeHtml(m.note)} ${expiryBadgeHtml(m.expiry)}</div>
+        </div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn sm" onclick="openRefillModal('${m.id}')">${tr('btnRefill')}</button>
         <button class="btn danger sm" onclick="deleteMed('${m.id}')">${tr('btnRemove')}</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function toggleVitalInputs() {
@@ -1691,6 +2042,48 @@ function buildSimplePdfBlob(lines) {
   return new Blob([pdf], { type: 'application/pdf' });
 }
 
+function onLabTypeChange() {
+  const val = document.getElementById('labTestType').value;
+  document.getElementById('labCustomWrap').style.display = val === 'Custom' ? 'block' : 'none';
+}
+function saveLabResult() {
+  const type = document.getElementById('labTestType').value;
+  const testName = type === 'Custom' ? document.getElementById('labCustomName').value.trim() : type;
+  const value = document.getElementById('labValue').value.trim();
+  const date = document.getElementById('labDate').value || todayKey();
+  const note = document.getElementById('labNote').value.trim();
+  if (!testName || !value) return showToast('Enter test name and value');
+  db.labs.unshift({ id: 'l_' + Date.now(), profileId: db.activeProfileId, testName, value, date, note });
+  saveDB();
+  document.getElementById('labValue').value = '';
+  document.getElementById('labNote').value = '';
+  document.getElementById('labCustomName').value = '';
+  renderLabs();
+  showToast('Lab result saved');
+}
+function deleteLabResult(id) {
+  db.labs = db.labs.filter(l => l.id !== id);
+  saveDB();
+  renderLabs();
+}
+function renderLabs() {
+  const list = document.getElementById('labList');
+  if (!list) return;
+  const items = (db.labs || []).filter(l => l.profileId === db.activeProfileId);
+  if (!items.length) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:0">No lab reports logged yet.</p>`;
+    return;
+  }
+  list.innerHTML = items.slice(0, 15).map(l => `
+    <div class="med-item">
+      <div class="med-info">
+        <h4>${esc(l.testName)}: ${esc(l.value)}</h4>
+        <p>${esc(l.date)}${l.note ? ' • ' + esc(l.note) : ''}</p>
+      </div>
+      <button class="btn danger sm" onclick="deleteLabResult('${l.id}')">Del</button>
+    </div>`).join('');
+}
+
 function downloadDoctorPdf() {
   const prof = db.profiles.find(p => p.id === db.activeProfileId) || { name: 'Self' };
   const meds = db.meds.filter(m => m.profileId === db.activeProfileId);
@@ -1716,6 +2109,12 @@ function downloadDoctorPdf() {
     });
   } else {
     lines.push('No vitals logged.');
+  }
+  const labs = (db.labs || []).filter(l => l.profileId === db.activeProfileId).slice(0, 8);
+  if (labs.length) {
+    lines.push('----------------------------------------------------------------');
+    lines.push(`LAB RESULTS (${labs.length}):`);
+    labs.forEach(l => lines.push(`- ${l.date}: ${l.testName} = ${l.value}${l.note ? ' (' + l.note + ')' : ''}`));
   }
   const blob = buildSimplePdfBlob(lines);
   const fileName = `CareVault-Report-${(prof.name || 'Family').replace(/\s+/g, '_')}.pdf`;
@@ -1768,6 +2167,8 @@ function generateDoctorReport() {
       <ul style="margin:4px 0 8px;padding-left:18px">${meds.map(m => `<li>${esc(m.name)} (${m.slot} ${m.time}, ${m.note})</li>`).join('') || '<li>None</li>'}</ul>
       <b>Recent Vitals:</b>
       <ul style="margin:4px 0 8px;padding-left:18px">${vitals.map(v => `<li>${new Date(v.ts).toLocaleDateString()} — ${v.type.toUpperCase()}: ${v.v1}${v.v2 ? '/' + v.v2 : ''}</li>`).join('') || '<li>None</li>'}</ul>
+      <b>Lab Results:</b>
+      <ul style="margin:4px 0 8px;padding-left:18px">${(db.labs || []).filter(l => l.profileId === db.activeProfileId).slice(0, 6).map(l => `<li>${esc(l.date)} — ${esc(l.testName)}: ${esc(l.value)}</li>`).join('') || '<li>None</li>'}</ul>
       <div class="row-2 no-print">
         <a id="directPdfLink" class="btn sm" style="text-align:center;text-decoration:none" download="CareVault-Report.pdf" href="#">Save / Share PDF</a>
         <button class="btn sec sm" onclick="copyDoctorSummary()">Copy Summary</button>
@@ -1883,7 +2284,10 @@ function renderAll() {
   renderToday();
   renderMeds();
   renderVitals();
+  renderLabs();
   loadEmergencyCard();
+  const ld = document.getElementById('labDate');
+  if (ld && !ld.value) ld.value = todayKey();
   const vt = document.getElementById('voiceToggle');
   if (vt) vt.checked = (db.voiceEnabled !== false);
   
@@ -1984,6 +2388,7 @@ function checkDueAlarms() {
   const k = todayKey();
   const dayLog = db.logs[k] || {};
   for (const m of db.meds) {
+    if (!isMedDueOnDate(m, now)) continue;
     if (dayLog[m.id] === 'taken' || dayLog[m.id] === 'skipped') continue;
     if (_snoozeTimers[m.id]) continue;
     const [mh, mm] = (m.time || '08:00').split(':').map(Number);
