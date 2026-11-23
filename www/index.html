@@ -1254,43 +1254,29 @@ async function setupNotificationChannel() {
     if (!LN) return;
     await LN.requestPermissions();
     await LN.createChannel({
-      id: 'carevault_alarm_v2',
-      name: 'CareVault Loud Alarms',
-      description: '10-second loud medicine alarm reminders',
-      importance: 5,
+      id: 'carevault_pre_v2',
+      name: 'Pre-Dose Reminders',
+      description: 'Gentle notification 5 minutes before medicine time',
+      importance: 4,
       visibility: 1,
-      sound: 'carevault_alarm.wav',
       vibration: true
     });
-    await LN.registerActionTypes({
-      types: [{
-        id: 'MED_REMINDER',
-        actions: [
-          { id: 'take', title: 'Take Now' },
-          { id: 'snooze', title: 'Snooze 5m' }
-        ]
-      }]
+    await LN.createChannel({
+      id: 'carevault_alarm_v2',
+      name: 'Loud Medicine Alarms',
+      description: 'Loud 18-second alarm chime when medicine is due or overdue',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      sound: 'alarm_chime'
     });
     LN.addListener('localNotificationReceived', (notif) => {
-      const medId = notif?.extra?.medId;
-      const med = medId ? db.meds.find(m => m.id === medId) : null;
-      const prof = med ? db.profiles.find(p => p.id === med.profileId) : null;
-      startContinuousAlarm(med, prof ? prof.name : 'Family', notif.body || 'Time for your medicine');
+      if (notif.channelId === 'carevault_alarm_v2') {
+        triggerAlarmAndVoice(notif.body || 'Time for your medicine');
+      }
     });
     LN.addListener('localNotificationActionPerformed', (act) => {
-      const medId = act?.notification?.extra?.medId;
-      if (act.actionId === 'take' && medId) {
-        logDose(medId, 'taken');
-        return;
-      }
-      const med = medId ? db.meds.find(m => m.id === medId) : null;
-      if (act.actionId === 'snooze' && med) {
-        _ringingMedId = med.id;
-        snoozeAlarm5m();
-        return;
-      }
-      const prof = med ? db.profiles.find(p => p.id === med.profileId) : null;
-      startContinuousAlarm(med, prof ? prof.name : 'Family', act.notification?.body || 'Time for your medicine');
+      triggerAlarmAndVoice(act.notification?.body || 'Time for your medicine');
     });
   } catch (e) {}
 }
@@ -1394,22 +1380,44 @@ async function scheduleMedNotification(med) {
     const prof = db.profiles.find(p => p.id === med.profileId);
     const who = prof ? prof.name : 'Family';
     const [hh, mm] = med.time.split(':').map(Number);
-    const baseId = Math.abs(parseInt(String(med.id).replace(/\D/g, '').slice(-6) || '1000', 10)) * 10;
-    const offsets = [0, 5, 10];
-    const notifs = offsets.map((off, idx) => {
-      const totalMins = hh * 60 + mm + off;
-      const nh = Math.floor(totalMins / 60) % 24;
-      const nm = totalMins % 60;
-      return {
-        id: baseId + idx,
-        title: off === 0 ? `CareVault Alarm (${who})` : `Missed Dose Reminder (${who})`,
-        body: `Time for ${who}: ${med.name}, ${med.note}`,
-        channelId: 'carevault_alarm_v2',
-        sound: 'carevault_alarm.wav',
-        schedule: { on: { hour: nh, minute: nm }, repeats: true, allowWhileIdle: true }
-      };
+
+    let preM = mm - 5, preH = hh;
+    if (preM < 0) { preM += 60; preH = (preH + 23) % 24; }
+
+    let ovM = mm + 2, ovH = hh;
+    if (ovM >= 60) { ovM -= 60; ovH = (ovH + 1) % 24; }
+
+    const baseId = Math.floor(10000 + Math.random() * 80000);
+    med.notifIds = [baseId, baseId + 1, baseId + 2];
+    saveDB();
+
+    await LN.schedule({
+      notifications: [
+        {
+          id: baseId,
+          title: `Upcoming in 5m (${who})`,
+          body: `Prepare ${med.name} (${med.note}) at ${med.time}`,
+          channelId: 'carevault_pre_v2',
+          schedule: { on: { hour: preH, minute: preM }, repeats: true, allowWhileIdle: true }
+        },
+        {
+          id: baseId + 1,
+          title: `ALARM: ${med.name} (${who})`,
+          body: `Time NOW for ${who}: ${med.name}, ${med.note}`,
+          channelId: 'carevault_alarm_v2',
+          sound: 'alarm_chime',
+          schedule: { on: { hour: hh, minute: mm }, repeats: true, allowWhileIdle: true }
+        },
+        {
+          id: baseId + 2,
+          title: `OVERDUE ALARM: ${med.name}`,
+          body: `Still pending for ${who}: ${med.name} (${med.note})`,
+          channelId: 'carevault_alarm_v2',
+          sound: 'alarm_chime',
+          schedule: { on: { hour: ovH, minute: ovM }, repeats: true, allowWhileIdle: true }
+        }
+      ]
     });
-    await LN.schedule({ notifications: notifs });
   } catch (e) {}
 }
 
