@@ -139,7 +139,7 @@ jobs:
           python3 - << 'PYEOF'
           import wave, struct, math
           sr = 22050
-          dur = 2.4
+          dur = 12.0
           with wave.open("android/app/src/main/res/raw/carevault_alarm.wav", "w") as wf:
               wf.setnchannels(1)
               wf.setsampwidth(2)
@@ -154,6 +154,8 @@ jobs:
                       val = 0.0
                   frames += struct.pack("<h", int(max(-1.0, min(1.0, val)) * 32767))
               wf.writeframes(frames)
+          import shutil
+          shutil.copy("android/app/src/main/res/raw/carevault_alarm.wav", "android/app/src/main/res/raw/carevault_overdue.wav")
           PYEOF
 
       - name: Build Debug APK and Signed Release AAB
