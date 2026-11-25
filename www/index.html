@@ -115,6 +115,12 @@
       background: var(--accent); color: #042F2E; border-color: var(--accent); font-weight: 700;
     }
     .prof-chip.add { border-style: dashed; color: var(--accent); }
+    .prof-del {
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-left: 6px; width: 17px; height: 17px; border-radius: 50%;
+      background: rgba(244,63,94,0.22); color: #FDA4AF; font-size: 11px; font-weight: 800; line-height: 1;
+    }
+    .prof-chip.active .prof-del { background: rgba(4,47,46,0.25); color: #042F2E; }
 
     .page { display: none; padding: 0 16px; animation: fadeIn 0.2s ease; }
     .page.active { display: block; }
@@ -154,7 +160,7 @@
       display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
       border-radius: 6px; margin-top: 4px;
     }
-    .badge.ok { background: rgba(16,185,129,0.18); color: var(--ok); }
+    .badge.ok { background: rgba(20,184,166,0.18); color: var(--accent); }
     .badge.warn { background: rgba(245,158,11,0.18); color: var(--warn); }
     .badge.danger { background: rgba(244,63,94,0.18); color: var(--danger); }
 
@@ -231,7 +237,7 @@
       border: 1px solid var(--border); cursor: pointer; transition: transform 0.12s;
     }
     .hm-cell:active { transform: scale(0.92); }
-    .hm-cell.ok { background: var(--ok); border-color: var(--ok); }
+    .hm-cell.ok { background: var(--accent); border-color: var(--accent); }
     .hm-cell.part { background: var(--warn); border-color: var(--warn); }
     .hm-cell.miss { background: rgba(244,63,94,0.35); border-color: var(--danger); }
     .med-thumb {
@@ -244,6 +250,14 @@
       background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; text-align: center;
     }
     .day-chip.active { background: var(--accent); color: #042F2E; border-color: var(--accent); }
+    .slot-takeall-bar {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;
+    }
+    .appt-banner {
+      background: rgba(20,184,166,0.12); border: 1px solid var(--accent);
+      border-radius: 14px; padding: 10px 12px; margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
     .overdue-banner {
       background: rgba(244,63,94,0.12); border: 1px solid var(--danger);
       border-radius: 14px; padding: 11px 12px; margin-bottom: 12px;
@@ -295,7 +309,9 @@
         </div>
       </div>
     </div>
+    <div id="apptBanner"></div>
     <div id="overdueFamilyBanner"></div>
+    <div id="slotTakeAllBar" class="slot-takeall-bar" style="display:none"></div>
     <div id="todayList"></div>
     <div class="card" id="heatmapCard" style="margin-top:12px">
       <div class="card-title">
@@ -305,7 +321,7 @@
       <div id="adherenceHeatmap" class="heatmap-grid"></div>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:6px">
         <span>30 days ago</span>
-        <span>🟢 100% &nbsp; 🟡 Partial &nbsp; 🔴 Missed</span>
+        <span>🟦 100% &nbsp; 🟡 Partial &nbsp; 🔴 Missed</span>
         <span>Today</span>
       </div>
     </div>
@@ -378,6 +394,22 @@
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Generate a clean 30-day adherence, active medicine list, and vitals summary for your doctor visit.</p>
       <button id="lblGenReport" class="btn full" onclick="generateDoctorReport()">Generate Doctor Report (Print / PDF)</button>
       <div id="reportPreview" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>Doctor Appointments &amp; Follow-Ups</span></div>
+      <div class="row-2">
+        <div><label>Doctor Name</label><input id="apptDoc" placeholder="e.g., Dr. Patel" /></div>
+        <div><label>Specialty / Clinic</label><input id="apptSpec" placeholder="e.g., Cardiologist" /></div>
+      </div>
+      <div class="row-2">
+        <div><label>Visit Date</label><input type="date" id="apptDate" /></div>
+        <div><label>Visit Time</label><input type="time" id="apptTime" value="10:00" /></div>
+      </div>
+      <label>Notes / Questions for Doctor (Optional)</label>
+      <input id="apptNotes" placeholder="e.g., Ask about BP dosage" />
+      <button class="btn full" onclick="saveAppointment()">Save Appointment &amp; Reminder</button>
+      <div id="apptList" style="margin-top:12px"></div>
     </div>
 
     <div class="card">
@@ -1189,6 +1221,7 @@ function loadDB() {
     };
   }
   if (!Array.isArray(data.labs)) data.labs = [];
+  if (!Array.isArray(data.appointments)) data.appointments = [];
   if (!Array.isArray(data.meds)) data.meds = [];
   if (!Array.isArray(data.vitals)) data.vitals = [];
   if (!data.logs || typeof data.logs !== 'object') data.logs = {};
@@ -1276,9 +1309,40 @@ function applyTheme() {
 
 function renderProfiles() {
   const wrap = document.getElementById('profileStrip');
-  wrap.innerHTML = db.profiles.map(p =>
-    `<button class="prof-chip ${p.id === db.activeProfileId ? 'active' : ''}" onclick="selectProfile('${p.id}')">${esc(p.name)}</button>`
-  ).join('') + `<button class="prof-chip add" onclick="openProfModal()">${tr('btnAddFamily')}</button>`;
+  wrap.innerHTML = db.profiles.map(p => {
+    const delBtn = p.id !== 'self'
+      ? `<span class="prof-del" title="Delete ${esc(p.name)}" onclick="deleteProfile('${p.id}', event)">✕</span>`
+      : '';
+    return `<button class="prof-chip ${p.id === db.activeProfileId ? 'active' : ''}" onclick="selectProfile('${p.id}')">${esc(p.name)}${delBtn}</button>`;
+  }).join('') + `<button class="prof-chip add" onclick="openProfModal()">${tr('btnAddFamily')}</button>`;
+}
+
+async function deleteProfile(id, ev) {
+  if (ev) ev.stopPropagation();
+  if (id === 'self') return;
+  const prof = db.profiles.find(p => p.id === id);
+  if (!prof) return;
+  const profMeds = db.meds.filter(m => m.profileId === id);
+  for (const m of profMeds) {
+    await cancelMedNotifications(m.id);
+  }
+  db.meds = db.meds.filter(m => m.profileId !== id);
+  db.vitals = db.vitals.filter(v => v.profileId !== id);
+  db.labs = (db.labs || []).filter(l => l.profileId !== id);
+  for (const a of (db.appointments || []).filter(x => x.profileId === id)) {
+    try {
+      const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+      const bid = getNotifId(a.id);
+      if (LN) await LN.cancel({ notifications: [{ id: bid }, { id: bid + 1 }] });
+    } catch (e) {}
+  }
+  db.appointments = (db.appointments || []).filter(a => a.profileId !== id);
+  db.profiles = db.profiles.filter(p => p.id !== id);
+  if (db.activeProfileId === id) db.activeProfileId = 'self';
+  saveDB();
+  renderAll();
+  updateAlarmStatusDisplay();
+  showToast(`Removed ${prof.name}`);
 }
 
 function selectProfile(id) {
@@ -2064,6 +2128,128 @@ function renderHeatmap() {
   streakEl.textContent = `🔥 ${streak}d Streak`;
 }
 
+async function takeAllSlot(slotName) {
+  const now = new Date();
+  const k = todayKey();
+  if (!db.logs[k]) db.logs[k] = {};
+  const dueInSlot = db.meds.filter(m =>
+    m.profileId === db.activeProfileId &&
+    m.slot === slotName &&
+    isMedDueOnDate(m, now) &&
+    db.logs[k][m.id] !== 'taken'
+  );
+  if (!dueInSlot.length) return;
+  for (const m of dueInSlot) {
+    db.logs[k][m.id] = 'taken';
+    m.stock = parseInt(m.stock, 10) || 0;
+    if (m.stock > 0) m.stock -= 1;
+    if (_snoozeTimers[m.id]) { clearTimeout(_snoozeTimers[m.id]); delete _snoozeTimers[m.id]; }
+    try {
+      const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+      if (LN) LN.cancel({ notifications: [{ id: getNotifId(m.id) + 1 }] }).catch(() => {});
+    } catch (e) {}
+  }
+  saveDB();
+  renderAll();
+  showToast(`Marked ${dueInSlot.length} ${slotName} dose(s) as Taken!`);
+}
+
+async function scheduleAppointmentReminder(appt) {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!LN || !appt.date) return;
+    await LN.requestPermissions();
+    const [y, m, d] = appt.date.split('-').map(Number);
+    const [hh, mm] = (appt.time || '10:00').split(':').map(Number);
+    const visitAt = new Date(y, m - 1, d, hh, mm, 0, 0);
+    const dayBefore = new Date(y, m - 1, d - 1, 9, 0, 0, 0);
+    const twoHrsBefore = new Date(visitAt.getTime() - 2 * 60 * 60 * 1000);
+    const baseId = getNotifId(appt.id);
+    const prof = db.profiles.find(p => p.id === appt.profileId);
+    const who = prof ? prof.name : 'Family';
+    const notifs = [];
+    if (dayBefore.getTime() > Date.now() + 5000) {
+      notifs.push({
+        id: baseId,
+        title: `Doctor Visit Tomorrow (${who})`,
+        body: `${appt.doctorName}${appt.spec ? ' (' + appt.spec + ')' : ''} at ${appt.time || '10:00'}`,
+        channelId: 'carevault_pre_v5',
+        schedule: { at: dayBefore, allowWhileIdle: true }
+      });
+    }
+    if (twoHrsBefore.getTime() > Date.now() + 5000) {
+      notifs.push({
+        id: baseId + 1,
+        title: `Doctor Visit in 2 Hours (${who})`,
+        body: `${appt.doctorName} at ${appt.time || '10:00'}${appt.notes ? ' • ' + appt.notes : ''}`,
+        channelId: 'carevault_pre_v5',
+        schedule: { at: twoHrsBefore, allowWhileIdle: true }
+      });
+    }
+    if (notifs.length) await LN.schedule({ notifications: notifs });
+  } catch (e) {}
+}
+
+async function saveAppointment() {
+  const doctorName = document.getElementById('apptDoc').value.trim();
+  const spec = document.getElementById('apptSpec').value.trim();
+  const date = document.getElementById('apptDate').value;
+  const time = document.getElementById('apptTime').value || '10:00';
+  const notes = document.getElementById('apptNotes').value.trim();
+  if (!doctorName || !date) return showToast('Enter doctor name and visit date');
+  const appt = { id: 'a_' + Date.now(), profileId: db.activeProfileId, doctorName, spec, date, time, notes };
+  db.appointments.push(appt);
+  saveDB();
+  document.getElementById('apptDoc').value = '';
+  document.getElementById('apptSpec').value = '';
+  document.getElementById('apptNotes').value = '';
+  await scheduleAppointmentReminder(appt);
+  renderAppointments();
+  renderToday();
+  updateAlarmStatusDisplay();
+  showToast('Appointment & reminder saved');
+}
+
+async function deleteAppointment(id) {
+  try {
+    const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    const baseId = getNotifId(id);
+    if (LN) await LN.cancel({ notifications: [{ id: baseId }, { id: baseId + 1 }] });
+  } catch (e) {}
+  db.appointments = (db.appointments || []).filter(a => a.id !== id);
+  saveDB();
+  renderAppointments();
+  renderToday();
+}
+
+function renderAppointments() {
+  const list = document.getElementById('apptList');
+  if (!list) return;
+  const items = (db.appointments || [])
+    .filter(a => a.profileId === db.activeProfileId)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  if (!items.length) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:0">No doctor appointments scheduled.</p>`;
+    return;
+  }
+  const todayStr = todayKey();
+  list.innerHTML = items.map(a => {
+    const isPast = a.date < todayStr;
+    return `<div class="med-item">
+      <div class="med-top">
+        <div class="med-info">
+          <h4>🩺 ${esc(a.doctorName)}${a.spec ? ' — ' + esc(a.spec) : ''}</h4>
+          <p>${esc(a.date)} at ${esc(a.time || '10:00')}${a.notes ? ' • ' + esc(a.notes) : ''}</p>
+          ${isPast ? '<span class="badge warn">Completed / Past</span>' : '<span class="badge ok">Upcoming</span>'}
+        </div>
+      </div>
+      <div class="med-actions">
+        <button class="btn danger sm" onclick="deleteAppointment('${a.id}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderToday() {
   const now = new Date();
   const allProfMeds = db.meds.filter(m => m.profileId === db.activeProfileId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
@@ -2079,6 +2265,48 @@ function renderToday() {
   ring.style.setProperty('--pct', pct);
   ring.setAttribute('data-label', pct + '%');
   document.getElementById('todaySummary').textContent = tr('dosesSummary').replace('{taken}', takenCount).replace('{total}', dueMeds.length);
+
+  // Next Doctor Appointment banner (within 7 days)
+  const apptBanner = document.getElementById('apptBanner');
+  if (apptBanner) {
+    const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const upcoming = (db.appointments || [])
+      .filter(a => a.profileId === db.activeProfileId && a.date >= k)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
+    if (upcoming) {
+      const [ay, am, ad] = upcoming.date.split('-').map(Number);
+      const diffD = Math.round((new Date(ay, am - 1, ad).getTime() - todayMid) / 86400000);
+      if (diffD >= 0 && diffD <= 7) {
+        const whenTxt = diffD === 0 ? 'Today!' : diffD === 1 ? 'Tomorrow' : `in ${diffD} days`;
+        apptBanner.innerHTML = `<div class="appt-banner">
+          <div style="font-size:12px"><b>🩺 ${esc(upcoming.doctorName)}</b> (${whenTxt})<br><span style="color:var(--muted)">${esc(upcoming.date)} at ${esc(upcoming.time || '10:00')}</span></div>
+          <button class="btn sm" onclick="switchTab('vault');generateDoctorReport()">PDF</button>
+        </div>`;
+      } else {
+        apptBanner.innerHTML = '';
+      }
+    } else {
+      apptBanner.innerHTML = '';
+    }
+  }
+
+  // Slot-wise 1-Tap Take All buttons for pending Morning / Afternoon / Night doses
+  const slotBar = document.getElementById('slotTakeAllBar');
+  if (slotBar) {
+    const slotIcons = { Morning: '☀️', Afternoon: '🌤️', Night: '🌙' };
+    const btns = ['Morning', 'Afternoon', 'Night'].map(s => {
+      const pending = dueMeds.filter(m => m.slot === s && dayLog[m.id] !== 'taken');
+      if (pending.length < 2) return '';
+      return `<button class="btn sec sm" onclick="takeAllSlot('${s}')">${slotIcons[s]} Take All ${s} (${pending.length})</button>`;
+    }).filter(Boolean).join('');
+    if (btns) {
+      slotBar.innerHTML = btns;
+      slotBar.style.display = 'flex';
+    } else {
+      slotBar.innerHTML = '';
+      slotBar.style.display = 'none';
+    }
+  }
 
   // Overdue family alert banner (>20 mins past due)
   const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -2126,7 +2354,7 @@ function renderToday() {
         </div>
       </div>
       <div class="med-actions">
-        <button class="btn sm" onclick="logDose('${m.id}','taken')">${tr('btnTake')}</button>
+        <button class="btn sm" style="${st === 'taken' ? 'opacity:0.78;' : ''}" onclick="logDose('${m.id}','taken')">${st === 'taken' ? '✓ ' + tr('lblTaken') : tr('btnTake')}</button>
         ${isSos ? '' : `<button class="btn sec sm" onclick="logDose('${m.id}','skipped')">${tr('btnSkip')}</button>`}
       </div>
     </div>`;
@@ -2282,6 +2510,7 @@ function saveLabResult() {
   document.getElementById('labNote').value = '';
   document.getElementById('labCustomName').value = '';
   renderLabs();
+  renderAppointments();
   showToast('Lab result saved');
 }
 function deleteLabResult(id) {
@@ -2338,6 +2567,11 @@ function downloadDoctorPdf() {
     lines.push('----------------------------------------------------------------');
     lines.push(`LAB RESULTS (${labs.length}):`);
     labs.forEach(l => lines.push(`- ${l.date}: ${l.testName} = ${l.value}${l.note ? ' (' + l.note + ')' : ''}`));
+  }
+  const nextAppt = (db.appointments || []).filter(a => a.profileId === db.activeProfileId && a.date >= todayKey()).sort((a,b) => a.date.localeCompare(b.date))[0];
+  if (nextAppt) {
+    lines.push('----------------------------------------------------------------');
+    lines.push(`NEXT APPOINTMENT: ${nextAppt.doctorName} (${nextAppt.spec || '-'}) on ${nextAppt.date} ${nextAppt.time || ''}`);
   }
   const blob = buildSimplePdfBlob(lines);
   const fileName = `CareVault-Report-${(prof.name || 'Family').replace(/\s+/g, '_')}.pdf`;
