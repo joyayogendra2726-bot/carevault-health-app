@@ -85,6 +85,8 @@ jobs:
           missing = "\n    ".join(x for x in perms if x not in s)
           if missing:
               s = s.replace("<application", f"    {missing}\n    <application", 1)
+          if 'VoiceAlarmReceiver' not in s:
+              s = s.replace("</application>", '    <receiver android:name="com.carevault.medtracker.VoiceAlarmReceiver" android:exported="false" />\n    </application>', 1)
           with open(p, "w") as f:
               f.write(s)
           PYEOF
@@ -133,30 +135,187 @@ jobs:
           }
           EOF
 
-      - name: Generate loud native alarm WAV sound
+      - name: Generate native alarm WAV sounds (chime + overdue)
         run: |
           mkdir -p android/app/src/main/res/raw
           python3 - << 'PYEOF'
           import wave, struct, math
-          sr = 22050
-          dur = 12.0
-          with wave.open("android/app/src/main/res/raw/carevault_alarm.wav", "w") as wf:
-              wf.setnchannels(1)
-              wf.setsampwidth(2)
-              wf.setframerate(sr)
-              frames = bytearray()
-              for i in range(int(sr * dur)):
-                  t = i / sr
-                  # 4 loud urgent pulses (0.3s on, 0.3s off)
-                  if (t % 0.6) < 0.32:
-                      val = 0.85 * (math.sin(2 * math.pi * 880 * t) + 0.5 * math.sin(2 * math.pi * 1320 * t)) / 1.5
-                  else:
-                      val = 0.0
-                  frames += struct.pack("<h", int(max(-1.0, min(1.0, val)) * 32767))
-              wf.writeframes(frames)
-          import shutil
-          shutil.copy("android/app/src/main/res/raw/carevault_alarm.wav", "android/app/src/main/res/raw/carevault_overdue.wav")
+          def make_wav(path, dur):
+              sr = 22050
+              with wave.open(path, "w") as wf:
+                  wf.setnchannels(1)
+                  wf.setsampwidth(2)
+                  wf.setframerate(sr)
+                  frames = bytearray()
+                  for i in range(int(sr * dur)):
+                      t = i / sr
+                      if (t % 0.6) < 0.32:
+                          val = 0.85 * (math.sin(2 * math.pi * 880 * t) + 0.5 * math.sin(2 * math.pi * 1320 * t)) / 1.5
+                      else:
+                          val = 0.0
+                      frames += struct.pack("<h", int(max(-1.0, min(1.0, val)) * 32767))
+                  wf.writeframes(frames)
+          make_wav("android/app/src/main/res/raw/carevault_alarm.wav", 2.2)
+          make_wav("android/app/src/main/res/raw/carevault_overdue.wav", 12.0)
           PYEOF
+
+      - name: Add Native Background Voice Alarm (TTS) Plugin
+        run: |
+          PKG_DIR="android/app/src/main/java/com/carevault/medtracker"
+          mkdir -p "$PKG_DIR"
+          cat << 'JAVAEOF' > "$PKG_DIR/VoiceAlarmReceiver.java"
+          package com.carevault.medtracker;
+
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.media.AudioAttributes;
+          import android.media.AudioManager;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.os.PowerManager;
+          import android.speech.tts.TextToSpeech;
+          import android.speech.tts.UtteranceProgressListener;
+          import java.util.Locale;
+
+          public class VoiceAlarmReceiver extends BroadcastReceiver {
+              private TextToSpeech tts;
+              private PowerManager.WakeLock wakeLock;
+
+              @Override
+              public void onReceive(Context context, Intent intent) {
+                  final PendingResult pendingResult = goAsync();
+                  String rawText = intent.getStringExtra("speechText");
+                  final String speechText = (rawText != null && !rawText.isEmpty()) ? rawText : "Time for your medicine";
+                  final String langTag = intent.getStringExtra("lang");
+
+                  PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                  if (pm != null) {
+                      wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CareVault:VoiceAlarmWake");
+                      wakeLock.acquire(20000L);
+                  }
+
+                  final Handler handler = new Handler(Looper.getMainLooper());
+                  final Runnable cleanup = () -> {
+                      try { if (tts != null) { tts.stop(); tts.shutdown(); tts = null; } } catch (Exception ignored) {}
+                      try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Exception ignored) {}
+                      try { pendingResult.finish(); } catch (Exception ignored) {}
+                  };
+                  handler.postDelayed(cleanup, 16000L);
+
+                  tts = new TextToSpeech(context.getApplicationContext(), status -> {
+                      if (status == TextToSpeech.SUCCESS && tts != null) {
+                          try {
+                              if (langTag != null && !langTag.isEmpty()) {
+                                  tts.setLanguage(Locale.forLanguageTag(langTag));
+                              } else {
+                                  tts.setLanguage(Locale.US);
+                              }
+                              tts.setSpeechRate(1.18f);
+                              tts.setPitch(1.05f);
+                              AudioAttributes attrs = new AudioAttributes.Builder()
+                                  .setUsage(AudioAttributes.USAGE_ALARM)
+                                  .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                  .build();
+                              tts.setAudioAttributes(attrs);
+                              tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                                  @Override public void onStart(String utteranceId) {}
+                                  @Override public void onDone(String utteranceId) { handler.postDelayed(cleanup, 300L); }
+                                  @Override public void onError(String utteranceId) { handler.post(cleanup); }
+                              });
+                              Bundle params = new Bundle();
+                              params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM);
+                              String spoken = speechText + ". " + speechText;
+                              tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, params, "carevault_bg_voice");
+                          } catch (Exception e) {
+                              handler.post(cleanup);
+                          }
+                      } else {
+                          handler.post(cleanup);
+                      }
+                  });
+              }
+          }
+          JAVAEOF
+
+          cat << 'JAVAEOF' > "$PKG_DIR/VoiceAlarmPlugin.java"
+          package com.carevault.medtracker;
+
+          import android.app.AlarmManager;
+          import android.app.PendingIntent;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.os.Build;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          @CapacitorPlugin(name = "VoiceAlarm")
+          public class VoiceAlarmPlugin extends Plugin {
+              @PluginMethod
+              public void scheduleVoice(PluginCall call) {
+                  int id = call.getInt("id", 1000);
+                  long triggerAt = call.getData().optLong("triggerAtMillis", 0L);
+                  String speechText = call.getString("speechText", "Time for your medicine");
+                  String lang = call.getString("lang", "en-US");
+                  if (triggerAt <= System.currentTimeMillis()) {
+                      call.resolve();
+                      return;
+                  }
+                  Context ctx = getContext();
+                  Intent intent = new Intent(ctx, VoiceAlarmReceiver.class);
+                  intent.putExtra("speechText", speechText);
+                  intent.putExtra("lang", lang);
+                  int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+                  PendingIntent pi = PendingIntent.getBroadcast(ctx, id, intent, flags);
+                  AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+                  if (am != null) {
+                      try {
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                              am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                          } else {
+                              am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                          }
+                      } catch (SecurityException se) {
+                          am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                      }
+                  }
+                  JSObject ret = new JSObject();
+                  ret.put("scheduled", true);
+                  call.resolve(ret);
+              }
+
+              @PluginMethod
+              public void cancelVoice(PluginCall call) {
+                  int id = call.getInt("id", 1000);
+                  Context ctx = getContext();
+                  Intent intent = new Intent(ctx, VoiceAlarmReceiver.class);
+                  int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+                  PendingIntent pi = PendingIntent.getBroadcast(ctx, id, intent, flags);
+                  AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+                  if (am != null) am.cancel(pi);
+                  call.resolve();
+              }
+          }
+          JAVAEOF
+
+          cat << 'JAVAEOF' > "$PKG_DIR/MainActivity.java"
+          package com.carevault.medtracker;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(VoiceAlarmPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVAEOF
 
       - name: Build Debug APK and Signed Release AAB
         run: |
