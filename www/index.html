@@ -1692,13 +1692,13 @@ function playAlarmTone() {
   } catch (e) {}
 }
 
-async function speakText(text) {
+async function speakText(text, rate = 1.15) {
   if (db.voiceEnabled === false) return;
   const langTag = (I18N[db.lang] || I18N.en).tts;
   try {
     const TTS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech;
     if (TTS) {
-      await TTS.speak({ text, lang: langTag, rate: 0.95, pitch: 1.0, volume: 1.0 });
+      await TTS.speak({ text, lang: langTag, rate, pitch: 1.05, volume: 1.0 });
       return;
     }
   } catch (e) {}
@@ -1707,11 +1707,18 @@ async function speakText(text) {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = langTag;
-      u.rate = 0.95;
+      u.rate = rate;
       u.volume = 1.0;
       window.speechSynthesis.speak(u);
     }
   } catch (e) {}
+}
+function stopVoiceNow() {
+  try {
+    const TTS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech;
+    if (TTS && TTS.stop) TTS.stop().catch(() => {});
+  } catch (e) {}
+  try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {}
 }
 
 let _voiceTimeout = null;
@@ -1740,10 +1747,13 @@ async function resyncAllAlarms(notify = false) {
   if (notify) showToast('All background & advance alarms synced!');
 }
 function testAlarmAndVoice() {
-  const prof = db.profiles.find(p => p.id === db.activeProfileId);
-  const msg = `CareVault Alarm. Time for ${prof ? prof.name : 'your'} medicine.`;
-  triggerAlarmAndVoice(msg);
-  showToast('Playing Loud Alarm + Voice...');
+  const profMeds = db.meds.filter(m => m.profileId === db.activeProfileId);
+  const sampleName = profMeds.length ? profMeds[0].name : 'Metformin 500mg';
+  const sampleNote = profMeds.length && profMeds[0].note ? profMeds[0].note : 'After Meal';
+  const msg = `${sampleName}, ${sampleNote}. ${sampleName}, time to take your medicine!`;
+  playAlarmTone();
+  setTimeout(() => speakText(msg, 1.15), 650);
+  showToast(`Speaking: ${sampleName}`);
 }
 
 function toggleVoice(val) {
@@ -1760,13 +1770,20 @@ function getNextExactDate(timeStr) {
   return target;
 }
 async function cancelMedNotifications(medId) {
+  const baseId = getNotifId(medId);
   try {
     const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-    if (!LN) return;
-    const baseId = getNotifId(medId);
-    const ids = [];
-    for (let i = 0; i < 12; i++) ids.push({ id: baseId + i });
-    await LN.cancel({ notifications: ids });
+    if (LN) {
+      const ids = [];
+      for (let i = 0; i < 12; i++) ids.push({ id: baseId + i });
+      await LN.cancel({ notifications: ids });
+    }
+  } catch (e) {}
+  try {
+    const VA = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.VoiceAlarm;
+    if (VA) {
+      for (let i = 0; i < 12; i++) await VA.cancelVoice({ id: baseId + i });
+    }
   } catch (e) {}
 }
 
@@ -1849,6 +1866,25 @@ async function scheduleMedNotification(med, skipExactPrompt = false) {
     if (notifications.length) {
       await LN.schedule({ notifications });
     }
+    try {
+      const VA = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.VoiceAlarm;
+      if (VA && db.voiceEnabled !== false) {
+        const langTag = (I18N[db.lang] || I18N.en).tts;
+        const speechText = `${med.name}${med.note ? ', ' + med.note : ''}, ${who}`;
+        for (const n of notifications) {
+          if (n.extra && n.extra.isAdvance) continue;
+          const fireMs = n.schedule && n.schedule.at ? n.schedule.at.getTime() : 0;
+          if (fireMs > nowMs) {
+            await VA.scheduleVoice({
+              id: n.id,
+              triggerAtMillis: fireMs + 2400,
+              speechText,
+              lang: langTag
+            });
+          }
+        }
+      }
+    } catch (e) {}
   } catch (e) {
     console.error('scheduleMedNotification error', e);
   }
@@ -2503,6 +2539,7 @@ function stopAlarmOnly() {
   clearTimeout(_voiceTimeout);
   _alarmLoop = null;
   _voiceTimeout = null;
+  stopVoiceNow();
   const am = document.getElementById('alarmModal');
   if (am) { am.classList.remove('open'); am.style.display = 'none'; }
   try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {}
@@ -2554,19 +2591,28 @@ function startContinuousAlarm(med, who, msg) {
   clearTimeout(_voiceTimeout);
   _alarmCount = 0;
   showAlarmModal(med, who, msg);
+  const medName = med && med.name ? med.name : 'your medicine';
+  const medNote = med && med.note ? `, ${med.note}` : '';
+  const fastVoice = `${medName}${medNote}. ${medName}, time for ${who}!`;
+
+  // Short chime first, then speak medicine name 2x fast without beep overlap
   playAlarmTone();
+  if (db.voiceEnabled !== false) {
+    _voiceTimeout = setTimeout(() => {
+      speakText(fastVoice, 1.18);
+    }, 650);
+  }
   _alarmLoop = setInterval(() => {
     _alarmCount += 1;
     if (_alarmCount >= 25) { stopAlarmOnly(); return; }
-    playAlarmTone();
-  }, 2000);
-  try {
-    const TTS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech;
-    if (TTS && db.voiceEnabled !== false) {
-      const langTag = (I18N[db.lang] || I18N.en).tts;
-      TTS.speak({ text: `CareVault Alarm. ${msg}`, lang: langTag, rate: 0.95, pitch: 1.0, volume: 1.0 });
+    if (_alarmCount >= 3) {
+      if (_alarmCount % 4 === 0 && db.voiceEnabled !== false) {
+        speakText(`${medName}, ${who}`, 1.18);
+      } else {
+        playAlarmTone();
+      }
     }
-  } catch (e) {}
+  }, 2000);
 }
 function checkDueAlarms() {
   if (_alarmLoop || document.getElementById('alarmModal').classList.contains('open')) return;
