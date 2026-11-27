@@ -309,6 +309,13 @@
         </div>
       </div>
     </div>
+    <div class="card" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-size:13px"><b>💧 Daily Water</b> <span id="waterCountText" style="color:var(--muted);margin-left:6px">0 / 8 glasses</span></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sec sm" onclick="addWater(-1)">-</button>
+        <button class="btn sm" onclick="addWater(1)">+1 Glass</button>
+      </div>
+    </div>
     <div id="apptBanner"></div>
     <div id="overdueFamilyBanner"></div>
     <div id="slotTakeAllBar" class="slot-takeall-bar" style="display:none"></div>
@@ -525,6 +532,16 @@
     </div>
 
     <div class="card">
+      <div class="card-title"><span>App Privacy PIN Lock (Optional)</span></div>
+      <div id="pinStatusText" style="font-size:12px;color:var(--muted);margin-bottom:8px">PIN Lock is currently OFF.</div>
+      <div class="row-2">
+        <input type="password" inputmode="numeric" maxlength="4" id="pinSetupInput" placeholder="4-digit PIN" style="margin:0" />
+        <button class="btn sm" onclick="saveAppPin()">Set / Enable PIN</button>
+      </div>
+      <button id="btnDisablePin" class="btn danger sm full" style="margin-top:8px;display:none" onclick="disableAppPin()">Disable PIN Lock</button>
+    </div>
+
+    <div class="card">
       <div class="card-title"><span id="lblDisclaimer">Wellness &amp; Privacy Disclaimer</span></div>
       <p style="font-size:11px;color:var(--muted);line-height:1.5;margin:0">
         CareVault is a personal wellness tracking and medication reminder tool. It does not provide medical diagnosis, clinical advice, or treatment recommendations. All health data stays strictly offline on your device.
@@ -693,6 +710,30 @@
     <label id="lblMemberName">Name / Relation</label>
     <input id="pName" placeholder="e.g., Dad, Mom, Spouse, Child" />
     <button class="btn full" id="lblAddProfile" onclick="saveProfile()">Add Profile</button>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div id="confirmModal" class="modal-backdrop" style="z-index:600;align-items:center;" onclick="closeConfirmModal()">
+  <div class="modal-sheet" style="border-radius:20px;margin:16px;text-align:center;" onclick="event.stopPropagation()">
+    <div style="font-size:38px;margin-bottom:6px">⚠️</div>
+    <h3 id="confirmTitle" style="margin:0 0 8px;color:var(--danger)">Delete Profile?</h3>
+    <p id="confirmBody" style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.45"></p>
+    <div class="row-2">
+      <button class="btn sec" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn danger" id="confirmOkBtn" onclick="runConfirmedAction()">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN LOCK OVERLAY -->
+<div id="pinLockModal" class="modal-backdrop" style="z-index:700;align-items:center;background:var(--bg);">
+  <div class="modal-sheet" style="border-radius:20px;margin:16px;text-align:center;">
+    <div style="font-size:36px;margin-bottom:6px">🔒</div>
+    <h3 style="margin:0 0 6px;color:var(--accent)">CareVault Locked</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Enter your 4-digit Privacy PIN to continue</p>
+    <input type="password" inputmode="numeric" maxlength="4" id="pinUnlockInput" placeholder="••••" style="text-align:center;font-size:22px;letter-spacing:8px" />
+    <button class="btn full" onclick="unlockWithPin()">Unlock CareVault</button>
   </div>
 </div>
 
@@ -1222,6 +1263,7 @@ function loadDB() {
   }
   if (!Array.isArray(data.labs)) data.labs = [];
   if (!Array.isArray(data.appointments)) data.appointments = [];
+  if (!data.water || typeof data.water !== 'object') data.water = {};
   if (!Array.isArray(data.meds)) data.meds = [];
   if (!Array.isArray(data.vitals)) data.vitals = [];
   if (!data.logs || typeof data.logs !== 'object') data.logs = {};
@@ -1290,9 +1332,7 @@ function switchTab(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.nav-btn[data-tab="${name}"]`).classList.add('active');
-  
-renderAll();
-renderAll();
+  renderAll();
 }
 
 function setTheme(t) {
@@ -1317,32 +1357,110 @@ function renderProfiles() {
   }).join('') + `<button class="prof-chip add" onclick="openProfModal()">${tr('btnAddFamily')}</button>`;
 }
 
-async function deleteProfile(id, ev) {
+let _pendingConfirmFn = null;
+function openConfirmModal(title, body, onConfirm) {
+  _pendingConfirmFn = onConfirm;
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBody').textContent = body;
+  document.getElementById('confirmModal').classList.add('open');
+}
+function closeConfirmModal() {
+  _pendingConfirmFn = null;
+  document.getElementById('confirmModal').classList.remove('open');
+}
+async function runConfirmedAction() {
+  const fn = _pendingConfirmFn;
+  closeConfirmModal();
+  if (typeof fn === 'function') await fn();
+}
+
+function deleteProfile(id, ev) {
   if (ev) ev.stopPropagation();
   if (id === 'self') return;
   const prof = db.profiles.find(p => p.id === id);
   if (!prof) return;
-  const profMeds = db.meds.filter(m => m.profileId === id);
-  for (const m of profMeds) {
-    await cancelMedNotifications(m.id);
-  }
-  db.meds = db.meds.filter(m => m.profileId !== id);
-  db.vitals = db.vitals.filter(v => v.profileId !== id);
-  db.labs = (db.labs || []).filter(l => l.profileId !== id);
-  for (const a of (db.appointments || []).filter(x => x.profileId === id)) {
-    try {
-      const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-      const bid = getNotifId(a.id);
-      if (LN) await LN.cancel({ notifications: [{ id: bid }, { id: bid + 1 }] });
-    } catch (e) {}
-  }
-  db.appointments = (db.appointments || []).filter(a => a.profileId !== id);
-  db.profiles = db.profiles.filter(p => p.id !== id);
-  if (db.activeProfileId === id) db.activeProfileId = 'self';
+  openConfirmModal(
+    'Delete Profile?',
+    `Are you sure you want to delete "${prof.name}"? All medicines, vitals, lab reports, and alarms for this profile will be permanently removed.`,
+    async () => {
+      const profMeds = db.meds.filter(m => m.profileId === id);
+      for (const m of profMeds) {
+        await cancelMedNotifications(m.id);
+      }
+      db.meds = db.meds.filter(m => m.profileId !== id);
+      db.vitals = db.vitals.filter(v => v.profileId !== id);
+      db.labs = (db.labs || []).filter(l => l.profileId !== id);
+      for (const a of (db.appointments || []).filter(x => x.profileId === id)) {
+        try {
+          const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+          const bid = getNotifId(a.id);
+          if (LN) await LN.cancel({ notifications: [{ id: bid }, { id: bid + 1 }] });
+        } catch (e) {}
+      }
+      db.appointments = (db.appointments || []).filter(a => a.profileId !== id);
+      db.profiles = db.profiles.filter(p => p.id !== id);
+      if (db.activeProfileId === id) db.activeProfileId = 'self';
+      saveDB();
+      renderAll();
+      updateAlarmStatusDisplay();
+      showToast(`Removed ${prof.name}`);
+    }
+  );
+}
+
+function addWater(delta) {
+  const k = todayKey();
+  const wk = `${k}_${db.activeProfileId}`;
+  const cur = (db.water && db.water[wk]) || 0;
+  const next = Math.max(0, Math.min(20, cur + delta));
+  if (!db.water) db.water = {};
+  db.water[wk] = next;
   saveDB();
-  renderAll();
-  updateAlarmStatusDisplay();
-  showToast(`Removed ${prof.name}`);
+  renderWater();
+}
+function renderWater() {
+  const el = document.getElementById('waterCountText');
+  if (!el) return;
+  const wk = `${todayKey()}_${db.activeProfileId}`;
+  const cur = (db.water && db.water[wk]) || 0;
+  el.textContent = `${cur} / 8 glasses`;
+}
+
+function saveAppPin() {
+  const val = (document.getElementById('pinSetupInput').value || '').trim();
+  if (!/^\d{4}$/.test(val)) return showToast('Enter a valid 4-digit PIN');
+  db.appPin = val;
+  saveDB();
+  document.getElementById('pinSetupInput').value = '';
+  renderPinStatus();
+  showToast('4-Digit Privacy PIN Enabled');
+}
+function disableAppPin() {
+  delete db.appPin;
+  saveDB();
+  renderPinStatus();
+  showToast('PIN Lock Disabled');
+}
+function renderPinStatus() {
+  const st = document.getElementById('pinStatusText');
+  const btn = document.getElementById('btnDisablePin');
+  if (!st || !btn) return;
+  if (db.appPin) {
+    st.textContent = 'PIN Lock is ACTIVE (4-digit PIN set).';
+    btn.style.display = 'block';
+  } else {
+    st.textContent = 'PIN Lock is currently OFF.';
+    btn.style.display = 'none';
+  }
+}
+function unlockWithPin() {
+  const entered = (document.getElementById('pinUnlockInput').value || '').trim();
+  if (entered === db.appPin) {
+    document.getElementById('pinLockModal').classList.remove('open');
+    document.getElementById('pinUnlockInput').value = '';
+  } else {
+    showToast('Incorrect PIN');
+  }
 }
 
 function selectProfile(id) {
@@ -2205,6 +2323,8 @@ async function saveAppointment() {
   document.getElementById('apptNotes').value = '';
   await scheduleAppointmentReminder(appt);
   renderAppointments();
+  renderWater();
+  renderPinStatus();
   renderToday();
   updateAlarmStatusDisplay();
   showToast('Appointment & reminder saved');
@@ -2875,6 +2995,9 @@ function checkDueAlarms() {
 setInterval(checkDueAlarms, 3000);
 if ('serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.register('./sw.js').catch(() => {});
 renderAll();
+if (db.appPin) {
+  document.getElementById('pinLockModal').classList.add('open');
+}
 </script>
 </body>
 </html>
